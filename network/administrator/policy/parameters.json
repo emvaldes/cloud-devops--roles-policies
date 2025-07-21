@@ -1,0 +1,10 @@
+[
+    {
+        "ParameterKey": "ManagedPolicyName",
+        "ParameterValue": "network-administrator-policy"
+    },
+    {
+        "ParameterKey": "CustomPolicyPath",
+        "ParameterValue": "/managed/network/"
+    }
+]

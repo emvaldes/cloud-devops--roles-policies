@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+
+# 1) Turn on in your chosen home Region
+aws resource-explorer-2 create-index --region us-east-1
+
+# 2) Promote that Region to the account AGGREGATOR
+aws resource-explorer-2 update-index-type --region us-east-1 --type AGGREGATOR
+
+# 3) Create a view (no filters = include all resources)
+aws resource-explorer-2 create-view --region us-east-1 --view-name network-arch-all
+
+# 4) Make it the default view for that Region
+aws resource-explorer-2 associate-default-view --region us-east-1 --view-arn <VIEW_ARN_FROM_STEP_3>
+
+POLICY_ARN="arn:aws:iam::<acct-id>:policy/<name>"; \
+VID=$(aws iam get-policy --policy-arn "$POLICY_ARN" --query 'Policy.DefaultVersionId' --output text); \
+aws iam get-policy-version --policy-arn "$POLICY_ARN" --version-id "$VID" --query 'PolicyVersion.Document' --output json > policy.json; \
+aws accessanalyzer validate-policy --policy-document file://policy.json --policy-type IDENTITY_POLICY \
+| jq -r '.findings[] | select(.findingType=="ERROR") | "\(.issueCode): \(.description)"'

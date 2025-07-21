@@ -1,0 +1,876 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Managed policy for Network Architecture (architecture-focused, read-mostly elsewhere)"
+
+Parameters:
+
+  ManagedPolicyName:
+    Type: String
+    Default: network-architecture-policy
+    Description: "AWS IAM managed policy (role naming conventions live on the role)"
+
+  CustomPolicyPath:
+    Type: String
+    Default: "/managed/network/"
+    AllowedPattern: "^/([A-Za-z0-9+=,.@_-]+/)*$"
+    Description: "IAM path prefix for policies (use / to disable)"
+
+Resources:
+
+  NetworkArchitectureManagedPolicy:
+
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+
+      ManagedPolicyName: !Ref ManagedPolicyName
+      Path: !Ref CustomPolicyPath
+      Description: "Grants network architects capabilities to prototype AWS networking & integrations"
+
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+
+# ---------------------------------------------------------------------------- #
+
+          ## -------------------------------------------------------------------
+          ## IAM: permit CFN to assume only CFN exec roles (boundary enforces CFN-only)
+          ## -------------------------------------------------------------------
+          - Sid: PassRoleForCloudFormationExecRoles
+            Effect: Allow
+            Action: iam:PassRole  ## allow passing exec roles to CFN
+            Resource:
+              - arn:aws:iam::*:role/cfn-*                          ## customer-created CFN execution roles (any path except service-role/)
+              - arn:aws:iam::*:role/cloudformation-*               ## alt customer naming for CFN exec roles
+              - arn:aws:iam::*:role/service-role/cfn-*             ## CFN exec roles placed under the 'service-role/' path
+              - arn:aws:iam::*:role/service-role/cloudformation-*  ## alt naming under the 'service-role/' path
+            Condition:
+              StringEquals:
+                iam:PassedToService: cloudformation.amazonaws.com  ## CFN target only
+
+          ## -------------------------------------------------------------------
+          ## IAM: discovery + service-linked role creation (writes limited)
+          ## -------------------------------------------------------------------
+          - Sid: IdentityDiscoveryAndSLR
+            Effect: Allow
+            Action:
+              - iam:Get*                     ## read IAM entities/policies
+              - iam:List*                    ## list IAM entities
+              - iam:CreateServiceLinkedRole  ## create SLRs when needed
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## KMS: read + cryptographic use (Encrypt/Decrypt/DataKey); boundary enforces ViaService constraints
+          ## -------------------------------------------------------------------
+          - Sid: KmsReadAndUse
+            Effect: Allow
+            Action:
+              - kms:Decrypt                          ## decrypt (service-bound via boundary)
+              - kms:DescribeKey                      ## read key metadata
+              - kms:Encrypt                          ## encrypt (service-bound via boundary)
+              - kms:GenerateDataKey                  ## data key generation (service-bound)
+              - kms:GenerateDataKeyWithoutPlaintext  ## envelope key generation
+              - kms:GetKeyPolicy                     ## read key policy
+              - kms:List*                            ## list keys/aliases/grants
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Secrets Manager: read-only (value + metadata)
+          ## -------------------------------------------------------------------
+          - Sid: SecretsManagerRead
+            Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue        ## read secret value
+              - secretsmanager:DescribeSecret        ## read secret metadata
+              - secretsmanager:ListSecrets           ## list secrets
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CloudShell: full access (boundary blocks file exfil/infil/cred inject)
+          ## -------------------------------------------------------------------
+          - Sid: CloudShellFull
+            Effect: Allow
+            Action:
+              - cloudshell:*  ## full CloudShell console features
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Q: console chat + Console-to-Code only (no admin)
+          ## -------------------------------------------------------------------
+          - Sid: AmazonQUseInConsole
+            Effect: Allow
+            Action:
+              - q:GenerateCodeFromCommands  ## console-to-code generation
+              - q:GetConversation           ## fetch conversation
+              - q:ListConversations         ## list past conversations
+              - q:SendMessage               ## send chat message
+              - q:StartConversation         ## start chat in console
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Q Business — chat-only usage (no admin)
+          ## Purpose: allow network engineers to use Q Business chat interfaces
+          ## for Q&A and troubleshooting assistance. No app/admin, data source,
+          ## indexing, or org-level controls are granted here.
+          ## -------------------------------------------------------------------
+          - Sid: QBusinessChatUseOnly
+            Effect: Allow
+            Action:
+              - qbusiness:Chat      # interactive chat sessions (async/streaming capable)
+              - qbusiness:ChatSync  # synchronous chat API for request/response calls
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## RAM: share lifecycle admin (create/update/delete/associate)
+          ## -------------------------------------------------------------------
+          - Sid: RamNetworkSharesAdmin
+            Effect: Allow
+            Action:
+              - ram:CreateResourceShare                  ## create a share
+              - ram:UpdateResourceShare                  ## update share
+              - ram:DeleteResourceShare                  ## delete share
+              - ram:AssociateResourceShare               ## attach resources/principals
+              - ram:DisassociateResourceShare            ## detach resources/principals
+              - ram:AssociateResourceSharePermission     ## attach permission
+              - ram:DisassociateResourceSharePermission  ## detach permission
+              - ram:AcceptResourceShareInvitation        ## accept invite
+              - ram:RejectResourceShareInvitation        ## reject invite
+              - ram:Get*                                 ## read shares/permissions
+              - ram:List*                                ## list shares/associations
+              - ram:TagResource                          ## tag a share
+              - ram:UntagResource                        ## untag a share
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## RAM: author custom permissions + promote policy-origin shares
+          ## -------------------------------------------------------------------
+          - Sid: RamPermissionAuthoring
+            Effect: Allow
+            Action:
+              - ram:CreatePermission                       ## create custom permission
+              - ram:CreatePermissionVersion                ## add new version
+              - ram:SetDefaultPermissionVersion            ## switch default version
+              - ram:UpdatePermission                       ## edit permission
+              - ram:DeletePermission                       ## delete permission
+              - ram:DeletePermissionVersion                ## delete version
+              - ram:ReplacePermissionAssociations          ## bulk swap permission on shares
+              - ram:ListPermissionAssociations             ## list where permission is used
+              - ram:PromotePermissionCreatedFromPolicy     ## promote policy-created perm
+              - ram:PromoteResourceShareCreatedFromPolicy  ## promote policy-origin share
+              - ram:Get*                                   ## read permissions
+              - ram:List*                                  ## list permissions
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Config: read-only (no rule/recorder changes)
+          ## -------------------------------------------------------------------
+          - Sid: ConfigReadOnly
+            Effect: Allow
+            Action:
+              - config:BatchGet*   ## batch reads
+              - config:Deliver*    ## read delivery info/snapshots
+              - config:Describe*   ## describe recorder/rules
+              - config:Get*        ## get config/history
+              - config:List*       ## list resources/rules
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CloudTrail: read-only (config/status/events lookup)
+          ## -------------------------------------------------------------------
+          - Sid: CloudTrailReadOnly
+            Effect: Allow
+            Action:
+              - cloudtrail:DescribeTrails       ## list trails and settings
+              - cloudtrail:GetEventSelectors    ## read event selectors
+              - cloudtrail:GetInsightSelectors  ## read insight selectors
+              - cloudtrail:GetTrailStatus       ## read trail status
+              - cloudtrail:List*                ## list trails/queries
+              - cloudtrail:LookupEvents         ## search events
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CloudWatch Logs: read + query (no admin/policy changes)
+          ## -------------------------------------------------------------------
+          - Sid: LogsReadAndQuery
+            Effect: Allow
+            Action:
+              - logs:Describe*        ## list log groups/streams
+              - logs:Get*             ## get log events/export tasks
+              - logs:FilterLogEvents  ## on-the-fly filter query
+              - logs:StartQuery       ## start Insights query
+              - logs:GetQueryResults  ## retrieve query results
+              - logs:List*            ## list queries/log groups
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CloudWatch metrics/alarms: read-only
+          ## -------------------------------------------------------------------
+          - Sid: CloudWatchReadOnly
+            Effect: Allow
+            Action:
+              - cloudwatch:Describe*  ## describe alarms/metrics
+              - cloudwatch:Get*       ## get metrics/alarms data
+              - cloudwatch:List*      ## list dashboards/alarms
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## X-Ray: read-only (traces, service map)
+          ## -------------------------------------------------------------------
+          - Sid: XRayReadOnly
+            Effect: Allow
+            Action:
+              - xray:Get*       ## get traces/insights
+              - xray:BatchGet*  ## batch trace gets
+              - xray:List*      ## list groups/sampling rules
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## S3: allow listing all buckets (for discovery/selection in tools/CLI)
+          ## -------------------------------------------------------------------
+          - Sid: S3ListAllMyBuckets
+            Effect: Allow
+            Action:
+              - s3:ListAllMyBuckets  ## list bucket names in the account
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## S3: admin on network-* buckets (no policy edits except via CFN)
+          ## -------------------------------------------------------------------
+          - Sid: S3NetworkBucketsAdminSafe
+            Effect: Allow
+            Action:
+              - s3:CreateBucket                ## create network-* buckets
+              - s3:PutPublicAccessBlock        ## enforce account-level PAB on bucket
+              - s3:GetPublicAccessBlock        ## read PAB
+              - s3:PutBucketOwnershipControls  ## set bucket owner preferred settings
+              - s3:GetBucketOwnershipControls  ## read ownership controls
+              - s3:PutBucketVersioning         ## enable versioning
+              - s3:GetBucketVersioning         ## read versioning status
+              - s3:PutBucketEncryption         ## set default SSE
+              - s3:GetEncryptionConfiguration  ## read SSE config
+              - s3:PutBucketTagging            ## tag buckets
+              - s3:GetBucketTagging            ## read bucket tags
+              - s3:GetBucketLocation           ## read region
+              - s3:ListBucket                  ## list objects
+              - s3:ListBucketVersions          ## list object versions
+            Resource:
+              - arn:aws:s3:::network-*
+
+          ## -------------------------------------------------------------------
+          ## S3: only CFN may set/delete bucket policies (change control)
+          ## -------------------------------------------------------------------
+          - Sid: S3BucketPolicyViaCloudFormationOnly
+            Effect: Allow
+            Action:
+              - s3:GetBucketPolicy        ## read current bucket policy
+              - s3:GetBucketPolicyStatus  ## read public access status
+              - s3:PutBucketPolicy        ## set/replace bucket policy
+              - s3:DeleteBucketPolicy     ## remove bucket policy
+            Resource:
+              - arn:aws:s3:::network-*
+            Condition:
+              ForAnyValue:StringEquals:
+                aws:CalledVia: cloudformation.amazonaws.com  ## only when invoked by CFN
+
+          ## -------------------------------------------------------------------
+          ## S3: object CRUD in network-* (SSE required; multipart supported)
+          ## -------------------------------------------------------------------
+          - Sid: S3NetworkObjectsStrict
+            Effect: Allow
+            Action:
+              - s3:PutObject                 ## upload object (single-part)
+              - s3:GetObject                 ## download object
+              - s3:GetObjectVersion          ## download specific version
+              - s3:DeleteObject              ## delete object (current version)
+              - s3:DeleteObjectVersion       ## delete a specific version
+              - s3:AbortMultipartUpload      ## abort in-progress multipart upload
+              - s3:CreateMultipartUpload     ## start multipart upload
+              - s3:UploadPart                ## upload object part
+              - s3:UploadPartCopy            ## copy part from another object
+              - s3:CompleteMultipartUpload   ## finalize multipart upload
+              - s3:ListMultipartUploadParts  ## list uploaded parts
+            Resource:
+              - arn:aws:s3:::network-*/*
+            Condition:
+              StringEqualsIfExists:
+                s3:x-amz-acl: bucket-owner-full-control  ## ensure bucket owner owns objects
+                s3:x-amz-server-side-encryption:
+                  - AES256   ## allow SSE-S3
+                  - aws:kms  ## allow SSE-KMS (see key allowlist below)
+              StringLikeIfExists:
+                s3:x-amz-server-side-encryption-aws-kms-key-id: arn:aws:kms:*:*:alias/network-*  ## only network-* KMS
+
+          ## -------------------------------------------------------------------
+          ## SSM: sessions/RunCommand (tag-gated), docs/params, minimal Automation
+          ## -------------------------------------------------------------------
+          - Sid: SsmCoreOps
+            Effect: Allow
+            Action:
+              - ssm:Describe*             ## read instance/doc/compliance info
+              - ssm:List*                 ## list docs/instances/commands
+              - ssm:Get*                  ## get parameters/docs/outputs
+              - ssm:StartSession          ## start Session Manager session
+              - ssm:ResumeSession         ## resume session
+              - ssm:TerminateSession      ## end session
+              - ssm:SendCommand           ## RunCommand dispatch
+              - ssm:CancelCommand         ## cancel command
+              - ssm:GetCommandInvocation  ## fetch command output
+            Resource: "*"
+            Condition:
+              StringEquals:
+                ssm:resourceTag/NetworkManaged: "true"  ## only our instances
+              StringLikeIfExists:
+                ssm:DocumentName:
+                  - AWS-RunShellScript       ## allow AWS basic shell
+                  - AWS-RunPowerShellScript  ## allow AWS PowerShell
+                  - network-*                ## allow our runbooks
+
+          ## -------------------------------------------------------------------
+          ## SSM — Associations & Maintenance Windows: full lifecycle (create/update/delete/register/describe)
+          ## -------------------------------------------------------------------
+          - Sid: SsmAssocAndMW
+            Effect: Allow
+            Action:
+              - ssm:*Association          # State Manager associations: create/update/delete/describe/list
+              - ssm:*MaintenanceWindow*   # Maintenance Windows: create/update/delete/register target/task; describe/list
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## SSM — Parameter Store: manage only your namespace (/network/...)
+          ## -------------------------------------------------------------------
+          - Sid: SsmParametersNetworkPath
+            Effect: Allow
+            Action:
+              - ssm:*Parameter*  ## Put/Get/Delete/Label/Describe/List parameters & versions under /network/
+            Resource: arn:aws:ssm:*:*:parameter/network/*
+
+          ## -------------------------------------------------------------------
+          ## SSM — Your runbooks (Documents): authoring/admin for network-* docs
+          ## -------------------------------------------------------------------
+          - Sid: SsmDocsNetwork
+            Effect: Allow
+            Action:
+              - ssm:*Document*  ## CreateDocument/UpdateDocument/UpdateDocumentDefaultVersion/DeleteDocument (and related describe/list)
+            Resource: arn:aws:ssm:*:*:document/network-*
+
+          ## -------------------------------------------------------------------
+          ## SSM — Global document read: fetch/inspect any SSM document
+          ## -------------------------------------------------------------------
+          - Sid: SsmDocsRead
+            Effect: Allow
+            Action:
+              - ssm:GetDocument           ## retrieve document content (any scope)
+              - ssm:DescribeDocument      ## read document metadata/default version
+              - ssm:ListDocuments         ## enumerate documents
+              - ssm:ListDocumentVersions  ## list versions of a document
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## SSM — Automation: start executions only for your runbooks; caller creds only
+          ## -------------------------------------------------------------------
+          - Sid: SsmAutomationStartNetworkDocsOnly
+            Effect: Allow
+            Action:
+              - ssm:StartAutomationExecution        ## kick off Automation execution for allowed docs
+            Resource:
+              - arn:aws:ssm:*:*:document/network-*  ## only your network-* runbooks
+            Condition:
+              Null:
+                ssm:AutomationAssumeRole: "true"    ## require NO AutomationAssumeRole (runs with caller context)
+
+          ## -------------------------------------------------------------------
+          ## SSM — Automation results: read back executions/steps
+          ## -------------------------------------------------------------------
+          - Sid: SsmAutomationReadResults
+            Effect: Allow
+            Action:
+              - ssm:GetAutomationExecution            ## fetch a specific execution
+              - ssm:DescribeAutomationExecutions      ## list executions
+              - ssm:DescribeAutomationStepExecutions  ## list steps within an execution
+              - ssm:ListAutomationExecutions          ## alternate listing API
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Direct Connect: discovery only (no lifecycle)
+          ## -------------------------------------------------------------------
+          - Sid: DirectConnectReadOnly
+            Effect: Allow
+            Action:
+              - directconnect:Describe*      ## read DX connections/virtual interfaces
+              - directconnect:List*          ## list resources
+              - directconnect:ViewConnections ## legacy read view
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Service Quotas: read everything (safe)
+          ## -------------------------------------------------------------------
+          - Sid: ServiceQuotasRead
+            Effect: Allow
+            Action:
+              - servicequotas:Get*   ## read quota values, defaults, templates, and individual requests
+              - servicequotas:List*  ## list services, quotas, change requests, and template entries
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Service Quotas: request increases (network-scoped only)
+          ## -------------------------------------------------------------------
+          - Sid: ServiceQuotasIncreaseNetworkScoped
+            Effect: Allow
+            Action:
+              - servicequotas:RequestServiceQuotaIncrease  ## submit increase request for a specific quota
+            Resource: "*"
+            Condition:
+              StringEquals:
+                servicequotas:service:    ## restrict requests to these services only
+                  - ec2                   ## VPC/subnets/IGWs/NATGWs/EIPs/ENIs/SecurityGroups per region/AZ
+                  - elasticloadbalancing  ## ALB/NLB counts, listeners, target groups, rules
+                  - route53               ## hosted zones, health checks, traffic policies
+                  - route53resolver       ## inbound/outbound endpoints, rules, IPs per endpoint
+                  - directconnect         ## connections, LAGs, virtual interfaces, hosted VIFs
+                  - globalaccelerator     ## accelerators, listeners, endpoint groups
+                  - network-firewall      ## firewalls, policies, rule groups, per-Region limits
+                  - vpc-lattice           ## service networks, services, auth policies, targets
+                  - networkmanager        ## global networks, sites, TGW/R53 integrations
+                  - ram                   ## resource shares, associations, permissions
+
+          ## -------------------------------------------------------------------
+          ## IAM Access Analyzer: read + policy validation
+          ## -------------------------------------------------------------------
+          - Sid: AccessAnalyzerReadOnlyAndValidation
+            Effect: Allow
+            Action:
+              - access-analyzer:Get*            ## read analyzers/findings
+              - access-analyzer:List*           ## list analyzers/findings
+              - access-analyzer:ValidatePolicy  ## validate JSON policy
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Security services: read-only (Hub/GuardDuty/Inspector)
+          ## -------------------------------------------------------------------
+          - Sid: SecurityServicesReadOnly
+            Effect: Allow
+            Action:
+              - guardduty:Get*         ## read GuardDuty
+              - guardduty:List*        ## list detectors/findings
+              - inspector2:Get*        ## read Inspector
+              - inspector2:List*       ## list findings/coverage
+              - securityhub:Describe*  ## read Security Hub
+              - securityhub:Get*       ## get findings/insights
+              - securityhub:List*      ## list products/members/findings
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Macie: read-only
+          ## -------------------------------------------------------------------
+          - Sid: MacieReadOnly
+            Effect: Allow
+            Action:
+              - macie2:Describe*  ## describe Macie setup
+              - macie2:Get*       ## get findings/classification
+              - macie2:List*      ## list jobs/findings
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Resource Explorer / Groups / Tag APIs: read-only discovery
+          ## -------------------------------------------------------------------
+          - Sid: DiscoveryAndTagReadOnly
+            Effect: Allow
+            Action:
+              - resource-explorer-2:Search  ## run resource searches
+              - resource-explorer-2:Get*    ## read views/index details
+              - resource-explorer-2:List*   ## list views/resources
+              - resource-groups:Get*        ## read resource groups
+              - resource-groups:List*       ## list groups
+              - tag:GetResources            ## find resources by tags
+              - tag:GetTagValues            ## list tag values
+              - tag:GetTagKeys              ## list tag keys
+              - account:ListRegions         ## enumerate regions
+              - organizations:List*         ## list org structure (read)
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## OAM: link to existing sinks; read state (sink admin denied by boundary)
+          ## -------------------------------------------------------------------
+          - Sid: ObservabilityAccessManagerLinking
+            Effect: Allow
+            Action:
+              - oam:CreateLink  ## create link to sink
+              - oam:DeleteLink  ## delete link
+              - oam:Get*        ## read OAM entities
+              - oam:List*       ## list links/sinks
+              - oam:UpdateLink  ## update link config
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## IaC: deploy with CloudFormation (create/update stacks & change sets)
+          ## -------------------------------------------------------------------
+          - Sid: CloudFormationDeploy
+            Effect: Allow
+            Action:
+              - cloudformation:CreateStack               ## create stacks from templates/params
+              - cloudformation:UpdateStack               ## update existing stacks
+              - cloudformation:CreateChangeSet           ## stage changes as a change set
+              - cloudformation:ExecuteChangeSet          ## apply a staged change set
+              - cloudformation:DeleteChangeSet           ## remove unused change sets
+              - cloudformation:Describe*                 ## read stacks/changes/events
+              - cloudformation:Get*                      ## fetch templates/stackpolicy
+              - cloudformation:List*                     ## list stacks/changes/exports
+              - cloudformation:ValidateTemplate          ## pre-validate a template
+              - cloudformation:DetectStackDrift          ## run drift detection
+              - cloudformation:DetectStackResourceDrift  ## resource-level drift
+              - cloudformation:CancelUpdateStack         ## cancel an in-flight update
+              - cloudformation:ContinueUpdateRollback    ## resume failed rollback
+            Resource: "*"
+
+            ## -------------------------------------------------------------------
+            ## SCM: CodeCommit read/write (Git pull/push + basic PR ops)
+            ## Purpose: enable engineers to clone/fetch, push commits/refs, and
+            ## manage pull requests for network infra repos. No repo/admin here
+            ## (no create/delete repo, policies, approvals config, triggers).
+            ## -------------------------------------------------------------------
+            - Sid: CodeCommitReadWrite
+              Effect: Allow
+              Action:
+                - codecommit:Get*                           # view repo/branch/PR metadata
+                - codecommit:List*                          # list repos/branches/PRs/commits
+                - codecommit:GitPull                        # clone/fetch via Git
+                - codecommit:GitPush                        # push commits/refs via Git
+                - codecommit:CreatePullRequest              # open PRs
+                - codecommit:UpdatePullRequest*             # edit PR title/desc/targets/state
+                - codecommit:MergePullRequestByFastForward  # merge (fast-forward)
+                - codecommit:MergePullRequestBySquash       # merge (squash)
+                - codecommit:MergePullRequestByThreeWay     # merge (3-way)
+              Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CI/CD: operate CodePipeline executions (start/stop/retry, approvals)
+          ## -------------------------------------------------------------------
+          - Sid: CodePipelineOperations
+            Effect: Allow
+            Action:
+              - codepipeline:Get*                    ## read pipeline state/executions/artifacts
+              - codepipeline:List*                   ## list pipelines/executions
+              - codepipeline:StartPipelineExecution  ## start a pipeline run
+              - codepipeline:StopPipelineExecution   ## stop/cancel a run
+              - codepipeline:RetryStageExecution     ## retry a failed stage
+              - codepipeline:PutApprovalResult       ## approve/reject manual approval
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CI: operate CodeBuild builds (start/stop/retry, read state)
+          ## -------------------------------------------------------------------
+          - Sid: CodeBuildOperations
+            Effect: Allow
+            Action:
+              - codebuild:BatchGet*   ## read build details/logs
+              - codebuild:List*       ## list projects/builds
+              - codebuild:StartBuild  ## kick off a build
+              - codebuild:StopBuild   ## stop a running build
+              - codebuild:RetryBuild  ## retry a failed build
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CD: operate CodeDeploy deployments (create/stop, read state)
+          ## -------------------------------------------------------------------
+          - Sid: CodeDeployOperations
+            Effect: Allow
+            Action:
+              - codedeploy:Get*              ## read apps/deployments/status
+              - codedeploy:List*             ## enumerate apps/deployments
+              - codedeploy:CreateDeployment  ## trigger a deployment
+              - codedeploy:StopDeployment    ## stop/rollback a deployment
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Messaging — SNS publish/read
+          ## -------------------------------------------------------------------
+          - Sid: SnsPublishAndRead
+            Effect: Allow
+            Action:
+              - sns:Publish
+              - sns:Get*
+              - sns:List*
+              - sns:ConfirmSubscription
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Messaging — SNS minimal writes (scoped to network-*)
+          ## -------------------------------------------------------------------
+          - Sid: SnsOpsMinimalWrites
+            Effect: Allow
+            Action:
+              - sns:Subscribe
+              - sns:Unsubscribe
+            Resource:
+              - arn:aws:sns:*:*:network-*
+              - arn:aws:sns:*:*:network-*:*
+
+          ## -------------------------------------------------------------------
+          ## Messaging — SQS consume/read
+          ## -------------------------------------------------------------------
+          - Sid: SqsConsumeAndRead
+            Effect: Allow
+            Action:
+              - sqs:ReceiveMessage
+              - sqs:SendMessage
+              - sqs:GetQueueAttributes
+              - sqs:GetQueueUrl
+              - sqs:ListQueues
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Messaging — SQS minimal writes (scoped to network-*)
+          ## -------------------------------------------------------------------
+          - Sid: SqsOpsMinimalWrites
+            Effect: Allow
+            Action:
+              - sqs:DeleteMessage
+              - sqs:ChangeMessageVisibility
+            Resource:
+              - arn:aws:sqs:*:*:network-*
+
+          ## -------------------------------------------------------------------
+          ## Core networking admin across services (broad control plane)
+          ## -------------------------------------------------------------------
+          - Sid: NetworkingAdmin
+            Effect: Allow
+            Action:
+              - ec2:*                   ## all EC2 (VPC/Subnets/NACLs/IGWs/TGW/etc.)
+              - elasticloadbalancing:*  ## all ELB/ALB/NLB
+              - globalaccelerator:*     ## all GA
+              - network-firewall:*      ## all AWS Network Firewall
+              - networkmanager:*        ## all Network Manager
+              - route53resolver:*       ## all Route 53 Resolver
+              - vpc-lattice:*           ## all VPC Lattice
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Route 53 + ARC: full admin (authoritative DNS, domains, ARC)
+          ## -------------------------------------------------------------------
+          - Sid: Route53AndARCAdmin
+            Effect: Allow
+            Action:
+              - route53:*                          ## all hosted zones/records
+              - route53profiles:*                  ## Route 53 Profiles
+              - route53-recovery-control-config:*  ## ARC routing controls config
+              - route53-recovery-readiness:*       ## ARC readiness checks
+              - route53-recovery-cluster:*         ## ARC cluster APIs
+              - arc-zonal-shift:*                  ## Zonal shift controls
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Route53 Domains (registrar): read-only visibility
+          ## -------------------------------------------------------------------
+          - Sid: Route53DomainsReadOnly
+            Effect: Allow
+            Action:
+              - route53domains:ListDomains              ## list registered domains
+              - route53domains:GetDomainDetail          ## read domain contacts/DNS/privacy
+              - route53domains:ListOperations           ## list registrar ops history
+              - route53domains:GetOperationDetail       ## read specific op detail
+              - route53domains:ListTagsForDomain        ## read domain tags
+              - route53domains:ListPrices               ## read pricing
+              - route53domains:CheckDomainAvailability  ## availability checks
+              - route53domains:GetDomainSuggestions     ## suggestions
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Firewall Manager: read-only
+          ## -------------------------------------------------------------------
+          - Sid: FirewallManagerReadOnly
+            Effect: Allow
+            Action:
+              - fms:Get*   ## read policies/resources
+              - fms:List*  ## list policies/member accts
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Edge protection (WAFv2/Shield): read-only
+          ## -------------------------------------------------------------------
+          - Sid: EdgeProtectionReadOnly
+            Effect: Allow
+            Action:
+              - wafv2:Get*        ## get web ACLs/resources
+              - wafv2:List*       ## list web ACLs/resources
+              - shield:Describe*  ## read Shield protections/events
+              - shield:List*      ## list protections
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Internet Monitor & VPC Network Monitor: admin
+          ## -------------------------------------------------------------------
+          - Sid: InternetAndNetworkMonitorAdmin
+            Effect: Allow
+            Action:
+              - internetmonitor:*  ## manage Internet Monitor
+              - networkmonitor:*   ## manage VPC Network Monitor
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Security Lake: read-only
+          ## -------------------------------------------------------------------
+          - Sid: SecurityLakeReadOnly
+            Effect: Allow
+            Action:
+              - securitylake:Get*   ## read lakes/subscribers
+              - securitylake:List*  ## list sources/subscribers
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Detective: read-only
+          ## -------------------------------------------------------------------
+          - Sid: DetectiveReadOnly
+            Effect: Allow
+            Action:
+              - detective:Get*       ## get Detective entities
+              - detective:List*      ## list graphs/members
+              - detective:Describe*  ## describe graphs/resources
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Audit Manager: read-only
+          ## -------------------------------------------------------------------
+          - Sid: AuditManagerReadOnly
+            Effect: Allow
+            Action:
+              - auditmanager:Get*       ## get assessments/evidence
+              - auditmanager:List*      ## list assessments/evidence
+              - auditmanager:Describe*  ## describe frameworks/settings
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## EventBridge & Scheduler: read-only visibility
+          ## -------------------------------------------------------------------
+          - Sid: EventsAndSchedulerReadOnly
+            Effect: Allow
+            Action:
+              - events:Describe*     ## read rules/targets/buses
+              - events:Get*          ## get rule/targets/policy
+              - events:List*         ## list rules/buses/targets
+              - scheduler:Describe*  ## read schedules
+              - scheduler:Get*       ## get schedule details
+              - scheduler:List*      ## list schedules/groups
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## EventBridge Pipes: read-only visibility
+          ## -------------------------------------------------------------------
+          - Sid: EventBridgePipesReadOnly
+            Effect: Allow
+            Action:
+              - pipes:DescribePipe         ## read pipe definition
+              - pipes:ListPipes            ## list pipes
+              - pipes:ListTagsForResource  ## read pipe tags
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Health Dashboard: read-only
+          ## -------------------------------------------------------------------
+          - Sid: HealthReadOnly
+            Effect: Allow
+            Action:
+              - health:Describe*  ## read Health events/impact
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Trusted Advisor: read-only checks
+          ## -------------------------------------------------------------------
+          - Sid: TrustedAdvisorReadOnly
+            Effect: Allow
+            Action:
+              - trustedadvisor:Describe*  ## describe TA checks
+              - trustedadvisor:List*      ## list checks/results
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Support: full case management
+          ## -------------------------------------------------------------------
+          - Sid: SupportFull
+            Effect: Allow
+            Action:
+              - support:*  ## create/update/view cases
+            Resource: "*"
+
+# ---------------------------------------------------------------------------- #
+
+          ## -------------------------------------------------------------------
+          ## ACM: prototyping ops (delete/import/options OK; no export/account cfg)
+          ## -------------------------------------------------------------------
+          - Sid: CertificateManagerPrototyping
+            Effect: Allow
+            Action:
+              - acm:RequestCertificate           # issue ACM-managed certs for tests
+              - acm:ImportCertificate            # bring test certs (no private key export path)
+              - acm:DeleteCertificate            # clean up test certs
+              - acm:UpdateCertificateOptions     # toggle key-usage/managed-renewal on test certs
+              - acm:DescribeCertificate          # read cert status/validation/state
+              - acm:GetCertificate               # fetch cert/public chain (no private key)
+              - acm:ListCertificates             # enumerate certs
+              - acm:ListTagsForCertificate       # read tags
+              - acm:AddTagsToCertificate         # add tags
+              - acm:RemoveTagsFromCertificate    # remove tags
+              - acm:RenewCertificate             # trigger managed renewal
+              - acm:ResendValidationEmail        # retry email validation when needed
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeArtifact: ADMIN (publish/read/administer repos/domains)
+          ## -------------------------------------------------------------------
+          - Sid: CodeArtifactAdmin
+            Effect: Allow
+            Action:
+              - codeartifact:*  ## full CodeArtifact admin: domains/repos create/update/delete; publish/read; policies; tokens
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## ECR: ADMIN (push/pull/repo admin)
+          ## -------------------------------------------------------------------
+          - Sid: EcrAdmin
+            Effect: Allow
+            Action:
+              - ecr:*  ## full ECR admin: repos create/delete; push/pull; policies; lifecycle/replication; scanning; tags
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## ECS: ADMIN (cluster/service/task lifecycle)
+          ## -------------------------------------------------------------------
+          - Sid: EcsAdmin
+            Effect: Allow
+            Action:
+              - ecs:*  ## full ECS admin: clusters/services/task-defs/tasks/capacity-providers lifecycle; exec; reads/lists; tagging
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## EKS: ADMIN (cluster/nodegroup/addon lifecycle)
+          ## -------------------------------------------------------------------
+          - Sid: EksAdmin
+            Effect: Allow
+            Action:
+              - eks:*  ## full EKS admin: clusters/nodegroups/addons/fargate-profiles lifecycle; access entries; idp config (not K8s RBAC)
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Service Discovery (read-only) & Service Catalog (provisioning allowed)
+          ## -------------------------------------------------------------------
+          - Sid: ServiceDiscoveryReadOnlyAndCatalogProvisioning
+            Effect: Allow
+            Action:
+              - servicecatalog:Describe*                    ## describe resources
+              - servicecatalog:Get*                         ## read products/portfolios
+              - servicecatalog:List*                        ## list products/portfolios
+              - servicecatalog:SearchProducts*              ## search catalog
+              - servicediscovery:Get*                       ## read Cloud Map services/namespaces
+              - servicediscovery:List*                      ## list services/instances
+              - servicecatalog:ProvisionProduct
+              - servicecatalog:TerminateProvisionedProduct
+              - servicecatalog:UpdateProvisionedProduct
+            Resource: "*"
+
+# ---------------------------------------------------------------------------- #
+
+Outputs:
+
+  ## ---------------------------------------------------------------------------
+  ## Resolved ARN of the NetworkArchitecture managed policy.
+  ## ---------------------------------------------------------------------------
+  ManagedPolicyArn:
+    Description: "ARN of the NetworkArchitecture managed policy"
+    Value: !Ref NetworkArchitectureManagedPolicy
