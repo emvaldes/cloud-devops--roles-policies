@@ -1,0 +1,156 @@
+---
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: NetworkSecurityRole with permissions boundary enforcing read-only security audit capabilities
+
+Resources:
+
+  NetworkSecurityBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: NetworkSecurityBoundary
+      Description: Permissions boundary for read-only security posture validation
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowSecurityReadOnly
+            Effect: Allow
+            Action:
+              - iam:Get*
+              - iam:List*
+              - access-analyzer:Get*
+              - access-analyzer:List*
+              - access-analyzer:Describe*
+              - config:Get*
+              - config:Describe*
+              - cloudtrail:LookupEvents
+              - cloudtrail:DescribeTrails
+              - securityhub:Get*
+              - securityhub:Describe*
+              - securityhub:List*
+              - guardduty:Get*
+              - guardduty:List*
+              - guardduty:Describe*
+              - inspector2:Get*
+              - inspector2:List*
+              - inspector2:Describe*
+              - qbusiness:QueryAssistant
+              - cloudshell:*
+            Resource: "*"
+
+          - Sid: DenyAllMutation
+            Effect: Deny
+            Action: "*"
+            Resource: "*"
+
+  NetworkSecurityPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: NetworkSecurityPolicy
+      Description: IAM policy for performing read-only audits of AWS network security posture
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: IAMAudit
+            Effect: Allow
+            Action:
+              - iam:Get*
+              - iam:List*
+            Resource: "*"
+
+          - Sid: AccessAnalyzer
+            Effect: Allow
+            Action:
+              - access-analyzer:Get*
+              - access-analyzer:List*
+              - access-analyzer:Describe*
+            Resource: "*"
+
+          - Sid: ConfigAudit
+            Effect: Allow
+            Action:
+              - config:Get*
+              - config:Describe*
+            Resource: "*"
+
+          - Sid: CloudTrailRead
+            Effect: Allow
+            Action:
+              - cloudtrail:LookupEvents
+              - cloudtrail:DescribeTrails
+            Resource: "*"
+
+          - Sid: SecurityHubView
+            Effect: Allow
+            Action:
+              - securityhub:Get*
+              - securityhub:Describe*
+              - securityhub:List*
+            Resource: "*"
+
+          - Sid: GuardDutyRead
+            Effect: Allow
+            Action:
+              - guardduty:Get*
+              - guardduty:List*
+              - guardduty:Describe*
+            Resource: "*"
+
+          - Sid: InspectorAudit
+            Effect: Allow
+            Action:
+              - inspector2:Get*
+              - inspector2:List*
+              - inspector2:Describe*
+            Resource: "*"
+
+          - Sid: DiagnosticTools
+            Effect: Allow
+            Action:
+              - cloudshell:*
+              - qbusiness:QueryAssistant
+            Resource: "*"
+
+  NetworkSecurityRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: NetworkSecurityRole
+      Description: Human-assumed role for read-only audit and security posture validation
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowSecurityAuditors
+            Effect: Allow
+            Principal:
+              AWS: "*"
+            Action: sts:AssumeRole
+            Condition:
+              Bool:
+                aws:MultiFactorAuthPresent: true
+      PermissionsBoundary: !Ref NetworkSecurityBoundary
+      ManagedPolicyArns:
+        - !Ref NetworkSecurityPolicy
+      Tags:
+        - Key: Purpose
+          Value: NetworkSecurity
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Role
+          Value: network-security
+        - Key: Team
+          Value: Network
+
+Outputs:
+
+  NetworkSecurityRoleArn:
+    Value: !GetAtt NetworkSecurityRole.Arn
+    Description: ARN of the IAM role for security auditing
+
+  NetworkSecurityPolicyArn:
+    Value: !Ref NetworkSecurityPolicy
+    Description: ARN of the IAM policy attached to the security role
+
+  NetworkSecurityBoundaryArn:
+    Value: !Ref NetworkSecurityBoundary
+    Description: ARN of the IAM permissions boundary attached to the security role

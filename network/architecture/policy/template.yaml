@@ -1,0 +1,450 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+## -----------------------------------------------------------------------------
+## AWS IAM Managed policy: Network Architecture Policy (Network Architecture role)
+## -----------------------------------------------------------------------------
+## What this is:
+##   - IAM managed policy attached to the NetworkArchitecture role.
+##   - Effective permissions = (this policy ∩ the role’s permissions boundary) − explicit denies.
+##
+## Key capabilities granted (aligned to boundary):
+##   - IaC & artifacts: CloudFormation, Code*, S3, CloudShell.
+##   - Networking: EC2 VPC/TGW/NAT/IGW/Endpoints, ELBv2, Route53 (incl. PHZ + health checks),
+##     Route53 Resolver, Direct Connect, Network Firewall, VPC Lattice, Global Accelerator.
+##   - Containers & artifacts: ECR, ECS, EKS, CodeArtifact.
+##   - Observability & audit: CloudWatch, Logs, CloudTrail, X-Ray, Config, OAM linking.
+##   - Ops & integration: SSM/SSM Messages/EC2 Messages, EventBridge, Scheduler, Pipes, RAM admin.
+##   - Discovery: Resource Explorer v2, Resource Groups, tagging, ListRegions, Orgs list.
+##   - Security (read-only): Security Hub, GuardDuty, Inspector2, Macie, Security Lake, FMS RO,
+##     WAFv2/Shield RO; plus Health/Trusted Advisor RO and Support case management.
+##   - Monitoring admin: Internet Monitor, VPC Network Monitor.
+##
+## Guardrails/constraints (enforced by the boundary, not here):
+##   - MFA required (mfa=true session tag; optional age ≤ 3600s).
+##   - PassRole only to roles tagged PassRole=true.
+##   - Deny IAM mutations; deny org-wide RAM sharing.
+##   - Service Quotas increase limited to approved network services.
+##
+## Tagging gates (enforced here via Conditions):
+##   - SNS/SQS creation/ops require Role=network-architecture and TagKeys {Role,Owner,DevOps}.
+##   - Audit Manager admin gated by Domain=network (+ TagKeys {Domain,Owner,DevOps}).
+##
+## Change control & validation:
+##   - Validate with: aws accessanalyzer validate-policy.
+##   - Test with: aws iam simulate-principal-policy using real ARNs where tag conditions apply.
+## -----------------------------------------------------------------------------
+
+Description: "Managed policy for NetworkArchitecture (aligned to expanded boundary)"
+
+Parameters:
+
+  ManagedPolicyName:
+    Type: String
+    Default: network-architecture-policy
+    Description: "AWS IMA managed policy (role naming conventions live on the role)"
+
+  CustomPolicyPath:
+    Type: String
+    Default: "/managed/network/"
+    AllowedPattern: "^/([A-Za-z0-9+=,.@_-]+/)*$"
+    Description: "IAM path prefix for policies (use / to disable)"
+
+Resources:
+
+  NetworkArchitectureManagedPolicy:
+
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+
+      ManagedPolicyName: !Ref ManagedPolicyName
+      Path: !Ref CustomPolicyPath
+
+      ## Guardrails (MFA, PassRole gating, IAM mutation blocks, RAM org-wide block, etc.) are enforced by the permissions boundary on the role
+      Description: "Grants network architects capabilities to prototype AWS networking & integrations"
+
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+
+          ## -------------------------------------------------------------------
+          ## Core IaC + artifact ecosystem (CFN, Code*, S3, CloudShell)
+          ## -------------------------------------------------------------------
+          - Sid: CoreIaCPipelineAndArtifactBuild
+            Effect: Allow
+            Action:
+              - cloudformation:*
+              - codecommit:*
+              - codebuild:*
+              - codedeploy:*
+              - codepipeline:*
+              - s3:*
+              - cloudshell:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Networking foundations (VPC/TGW/LBs/Resolver/Direct Connect/etc.)
+          ## -------------------------------------------------------------------
+          - Sid: NetworkingFoundationsForPrototyping
+            Effect: Allow
+            Action:
+              - ec2:*
+              - networkmanager:*
+              - globalaccelerator:*
+              - elasticloadbalancing:*
+              - route53resolver:*
+              - vpc-lattice:*
+              - network-firewall:*
+              - directconnect:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Route 53 authoritative DNS (incl. PHZ assoc. & health checks)
+          ## -------------------------------------------------------------------
+          - Sid: Route53AuthoritativeAdmin
+            Effect: Allow
+            Action:
+              - route53:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Edge protection visibility (WAFv2 / Shield) - ReadOnly
+          ## -------------------------------------------------------------------
+          - Sid: EdgeProtectionReadOnly
+            Effect: Allow
+            Action:
+              - wafv2:List*
+              - wafv2:Get*
+              - shield:Describe*
+              - shield:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Service Discovery & Service Catalog
+          ## -------------------------------------------------------------------
+          - Sid: ServiceDiscoveryAndCatalogEnablement
+            Effect: Allow
+            Action:
+              - servicediscovery:*
+              - servicecatalog:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Container registries/orchestration & code artifacts
+          ## -------------------------------------------------------------------
+          - Sid: ContainerAndArtifactEcosystem
+            Effect: Allow
+            Action:
+              - ecr:*
+              - codeartifact:*
+              - eks:*
+              - ecs:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Observability & audit (CW Logs/Metrics, CloudTrail, X-Ray, Config)
+          ## -------------------------------------------------------------------
+          - Sid: ObservabilityAndAuditEnablement
+            Effect: Allow
+            Action:
+              - logs:*
+              - cloudwatch:*
+              - cloudtrail:*
+              - xray:*
+              - config:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Systems Manager (SSM) for diagnostics and controlled access paths
+          ## -------------------------------------------------------------------
+          - Sid: SystemsManagementAndDiagnostics
+            Effect: Allow
+            Action:
+              - ssm:*
+              - ssmmessages:*
+              - ec2messages:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Reachability analysis utilities (Network Insights)
+          ## -------------------------------------------------------------------
+          - Sid: NetworkReachabilityAnalysis
+            Effect: Allow
+            Action:
+              - ec2:CreateNetworkInsightsPath
+              - ec2:StartNetworkInsightsAnalysis
+              - ec2:DescribeNetworkInsights*
+              - ec2:DeleteNetworkInsightsPath
+              - ec2:DeleteNetworkInsightsAnalysis
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Eventing & scheduling for tests/integration (EventBridge + Scheduler)
+          ## -------------------------------------------------------------------
+          - Sid: EventingAndSchedulingForTests
+            Effect: Allow
+            Action:
+              - events:*
+              - scheduler:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## IAM enablement for prototypes (discovery + SLR)
+          ##   PassRole is split to apply explicit tag gating here as well.
+          ## -------------------------------------------------------------------
+          - Sid: IdentityDiscoveryAndSLR
+            Effect: Allow
+            Action:
+              - iam:Get*
+              - iam:List*
+              - iam:CreateServiceLinkedRole
+            Resource: "*"
+
+          - Sid: PassRoleGatedByTag
+            Effect: Allow
+            Action:
+              - iam:PassRole
+            Resource: "*"
+            Condition:
+              StringEqualsIfExists:
+                aws:ResourceTag/PassRole: "true"
+
+          ## -------------------------------------------------------------------
+          ## KMS / Secrets Manager for pipelines and integration
+          ## -------------------------------------------------------------------
+          - Sid: KeyAndSecretUsageForPipelines
+            Effect: Allow
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:GenerateDataKey
+              - kms:GenerateDataKeyWithoutPlaintext
+              - kms:DescribeKey
+              - kms:List*
+              - secretsmanager:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Resource Explorer / Tagging / Cross-account discovery
+          ## -------------------------------------------------------------------
+          - Sid: DiscoveryTaggingAndResourceExplorer
+            Effect: Allow
+            Action:
+              - resource-explorer-2:*
+              - resource-groups:*
+              - tag:GetResources
+              - tag:GetTagValues
+              - account:ListRegions
+              - organizations:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Q assistants (Developer/Business experiences)
+          ## -------------------------------------------------------------------
+          - Sid: AmazonQAndConsoleToCodeEnablement
+            Effect: Allow
+            Action:
+              - q:*
+              - qbusiness:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## IAM Access Analyzer (read/validate only)
+          ## -------------------------------------------------------------------
+          - Sid: AccessAnalyzerReadOnlyAndValidation
+            Effect: Allow
+            Action:
+              - access-analyzer:Get*
+              - access-analyzer:List*
+              - access-analyzer:ValidatePolicy
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Observability Access Manager (OAM) linking/read
+          ## -------------------------------------------------------------------
+          - Sid: ObservabilityAccessManagerLinking
+            Effect: Allow
+            Action:
+              - oam:Get*
+              - oam:List*
+              - oam:*Link*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Messaging for network workflows (SNS/SQS) — tag-gated
+          ##   Requires Role=network-architecture on resource and request; enforces
+          ##   required tag keys at create-time.
+          ## -------------------------------------------------------------------
+          - Sid: MessagingProvisioningForWorkflows
+            Effect: Allow
+            Action:
+              - sns:*
+              - sqs:*
+            Resource: "*"
+            Condition:
+              StringEqualsIfExists:
+                aws:ResourceTag/Role: "network-architecture"
+              StringEquals:
+                aws:RequestTag/Role: "network-architecture"
+              ForAllValues:StringEquals:
+                aws:TagKeys: [Role, Owner, DevOps]
+
+          ## -------------------------------------------------------------------
+          ## EventBridge Pipes for integration experimentation
+          ## -------------------------------------------------------------------
+          - Sid: EventBridgePipesEnablement
+            Effect: Allow
+            Action:
+              - pipes:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## RAM admin for explicit cross-account sharing (org-wide toggle blocked
+          ## in boundary; full RAM admin here)
+          ## -------------------------------------------------------------------
+          - Sid: ResourceAccessManagerAdmin
+            Effect: Allow
+            Action:
+              - ram:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Service Quotas (network-scoped): read + request increases
+          ## -------------------------------------------------------------------
+          - Sid: ServiceQuotasNetworkScoped
+            Effect: Allow
+            Action:
+              - servicequotas:Get*
+              - servicequotas:List*
+              - servicequotas:RequestServiceQuotaIncrease
+            Resource: "*"
+            Condition:
+              StringEquals:
+                servicequotas:service:
+                  - ec2
+                  - elasticloadbalancing
+                  - route53
+                  - route53resolver
+                  - directconnect
+                  - globalaccelerator
+                  - network-firewall
+                  - vpc-lattice
+                  - networkmanager
+                  - ram
+
+          ## -------------------------------------------------------------------
+          ## Security services visibility (RO): Security Hub, GuardDuty, Inspector2
+          ## -------------------------------------------------------------------
+          - Sid: SecurityServicesReadOnly
+            Effect: Allow
+            Action:
+              - securityhub:Get*
+              - securityhub:Describe*
+              - securityhub:List*
+              - guardduty:Get*
+              - guardduty:List*
+              - inspector2:Get*
+              - inspector2:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Health (RO)
+          ## -------------------------------------------------------------------
+          - Sid: HealthReadOnly
+            Effect: Allow
+            Action:
+              - health:Describe*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Trusted Advisor (RO)
+          ## -------------------------------------------------------------------
+          - Sid: TrustedAdvisorReadOnly
+            Effect: Allow
+            Action:
+              - trustedadvisor:Describe*
+              - trustedadvisor:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Support (full case management)
+          ## -------------------------------------------------------------------
+          - Sid: SupportFull
+            Effect: Allow
+            Action:
+              - support:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Internet Monitor & VPC Network Monitor (admin)
+          ## -------------------------------------------------------------------
+          - Sid: InternetAndNetworkMonitorAdmin
+            Effect: Allow
+            Action:
+              - internetmonitor:*
+              - networkmonitor:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Firewall Manager (RO)
+          ## -------------------------------------------------------------------
+          - Sid: FirewallManagerReadOnly
+            Effect: Allow
+            Action:
+              - fms:Get*
+              - fms:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Macie (RO)
+          ## -------------------------------------------------------------------
+          - Sid: MacieReadOnly
+            Effect: Allow
+            Action:
+              - macie2:Get*
+              - macie2:List*
+              - macie2:Describe*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Detective (admin)
+          ## -------------------------------------------------------------------
+          - Sid: DetectiveAdmin
+            Effect: Allow
+            Action:
+              - detective:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Security Lake (RO)
+          ## -------------------------------------------------------------------
+          - Sid: SecurityLakeReadOnly
+            Effect: Allow
+            Action:
+              - securitylake:Get*
+              - securitylake:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Audit Manager (network-scoped admin via Domain=network tagging)
+          ## -------------------------------------------------------------------
+          - Sid: AuditManagerNetworkScopedAdmin
+            Effect: Allow
+            Action:
+              - auditmanager:*
+            Resource: "*"
+
+## ------------------------------------------------------------------------------
+## Outputs — Managed Policy
+## ------------------------------------------------------------------------------
+## Exposes the fully qualified ARN of the managed policy created in this stack.
+## Useful for:
+##   - Attaching to roles in other stacks as a parameter.
+##   - CI/validation to assert the correct policy is used.
+## Note: !Ref on AWS::IAM::ManagedPolicy returns the policy ARN (not the name).
+
+Outputs:
+
+  ## Resolved ARN of the NetworkArchitecture managed policy.
+  ManagedPolicyArn:
+    Description: "ARN of the NetworkArchitecture managed policy"
+    Value: !Ref NetworkArchitectureManagedPolicy

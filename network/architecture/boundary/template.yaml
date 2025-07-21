@@ -1,0 +1,622 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+## -----------------------------------------------------------------------------
+## AWS IAM Managed policy: Permissions boundary (Network Architecture role)
+## -----------------------------------------------------------------------------
+## What this is:
+##   - A MAXIMUM PERMISSIONS CEILING for any role that references it via
+##     Role.Properties.PermissionsBoundary.
+##   - It does NOT grant access by itself; effective permissions are:
+##       (attached policies ∩ this boundary) − ExplicitDenies
+##   - Explicit Deny here PRECEDES and OVERRIDES any Allow in attached policies.
+##   - Must be attached on the ROLE (PermissionsBoundary property).
+##
+## Goals (network ownership):
+##   - Full prototyping surface for network platforms (VPC/TGW/RAM/Endpoints/LB/etc.).
+##   - Route 53 authoritative DNS ADMIN (incl. PHZ associations + Health Checks).
+##   - Internet & VPC Network Monitor ADMIN (traffic/latency/availability visibility).
+##   - EC2 IPAM ADMIN (address mgmt pools/scopes/allocations).
+##   - RAM admin for explicit cross-account sharing (NO org-wide toggle).
+##   - Messaging for workflows (SNS/SQS create/manage) gated by network tags.
+##   - Support case management (support:*), Health and Trusted Advisor visibility.
+##   - Security services visibility (SecurityHub/GuardDuty/Inspector2/Macie RO),
+##     Detective ADMIN, Security Lake RO, Audit Manager network-scoped admin.
+##
+## Conventions:
+##   - Every Sid is commented with purpose and whether it’s a grant or guardrail.
+##   - Single CustomPolicyPath used for grouping (set "/" to disable).
+##   - No environment strings in names; env lives in roles, not the boundary.
+##   - Keep all GUARDRAIL (DENY) statements grouped at the end for audit diffs.
+##   - Avoid overlapping read-only catchalls with full-access blocks to reduce noise.
+##
+## Guardrails (non-bypassable):
+##   - No IAM mutations (create/attach/inline/update assume policy).
+##   - PassRole allowed ONLY when TARGET ROLE is tagged PassRole=true.
+##   - MFA REQUIRED on all requests; session must carry PrincipalTag mfa=true;
+##     optional cap on MFA age (MultiFactorAuthAge <= 3600s).
+##
+## Messaging policy (ceiling):
+##   - SNS/SQS provisioning/ops allowed ONLY on resources tagged Role=network-architecture.
+##   - Enforce required tag keys at CREATE time (Role, Owner, DevOps).
+##
+## Service Quotas (CANONICAL scope):
+##   - Allowed to request increases ONLY for:
+##       ec2, elasticloadbalancing, route53, route53resolver, directconnect,
+##       globalaccelerator, network-firewall, vpc-lattice, networkmanager, ram
+##   - Do NOT edit this list without explicit change approval.
+##
+## Testing & change control:
+##   - Validate ceilings with: aws iam simulate-principal-policy (use real ARNs
+##     where conditions/tags apply).
+##   - Treat DENY blocks as stable guardrails; changes require security review +
+##     recorded justification.
+##   - Compare managed-policy actions vs boundary allows to detect drift.
+## -----------------------------------------------------------------------------
+
+Description: "Permissions boundary for Network Architecture role"
+
+Parameters:
+
+  PermissionsBoundaryName:
+    Type: String
+    Default: network-architecture-permissions-boundary
+    Description: "Name for the IAM permissions boundary managed policy"
+
+  CustomPolicyPath:
+    Type: String
+    Default: "/managed/network/"
+    AllowedPattern: "^/([A-Za-z0-9+=,.@_-]+/)*$"
+    Description: "IAM path prefix for policies (use / to disable)"
+
+Resources:
+
+  NetworkArchitecturePermissionsBoundary:
+
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+
+      ManagedPolicyName: !Ref PermissionsBoundaryName
+      Path: !Ref CustomPolicyPath
+      Description: "Permissions boundary for the network architecture profile"
+
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+
+          ## -------------------------------------------------------------------
+          ## Core IaC + artifact ecosystem for building and iterating infra
+          ## (grant)
+          ## -------------------------------------------------------------------
+          - Sid: CoreIaCPipelineAndArtifactBuild
+            Effect: Allow
+            Action:
+              - cloudformation:*
+              - codecommit:*
+              - codebuild:*
+              - codedeploy:*
+              - codepipeline:*
+              - s3:*
+              - cloudshell:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Networking foundations (VPC, TGW, LBs, DNS resolver, etc.) (grant)
+          ## -------------------------------------------------------------------
+          - Sid: NetworkingFoundationsForPrototyping
+            Effect: Allow
+            Action:
+              - ec2:*
+              - networkmanager:*
+              - globalaccelerator:*
+              - elasticloadbalancing:*
+              - route53resolver:*
+              - vpc-lattice:*
+              - network-firewall:*
+              - directconnect:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Route53 Authoritative DNS (admin) + PHZ associations (grant)
+          ## - Added health check admin, commonly needed for traffic policies.
+          ## - WAFv2/Shield remain visibility-only (see separate Sid).
+          ## -------------------------------------------------------------------
+          - Sid: Route53AuthoritativeAdmin
+            Effect: Allow
+            Action:
+              ## - route53:CreateHostedZone
+              ## - route53:DeleteHostedZone
+              ## - route53:ChangeResourceRecordSets
+              ## - route53:UpdateHostedZoneComment
+              ## - route53:List*
+              ## - route53:Get*
+              ## - route53:ChangeTagsForResource
+              ## - route53:ListTagsForResource
+              ## - route53:AssociateVPCWithHostedZone
+              ## - route53:DisassociateVPCFromHostedZone
+              ## - route53:CreateVPCAssociationAuthorization
+              ## - route53:DeleteVPCAssociationAuthorization
+              ## - route53:CreateHealthCheck
+              ## - route53:UpdateHealthCheck
+              ## - route53:DeleteHealthCheck
+              - route53:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Edge protection (read-only): WAFv2 / Shield (grant-RO)
+          ## -------------------------------------------------------------------
+          - Sid: EdgeProtectionReadOnly
+            Effect: Allow
+            Action:
+              - wafv2:List*
+              - wafv2:Get*
+              - shield:Describe*
+              - shield:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Service Discovery / Service Catalog enablement (grant)
+          ## -------------------------------------------------------------------
+          - Sid: ServiceDiscoveryAndCatalogEnablement
+            Effect: Allow
+            Action:
+              - servicediscovery:*
+              - servicecatalog:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Container registries/orchestration and code artifacts (grant)
+          ## -------------------------------------------------------------------
+          - Sid: ContainerAndArtifactEcosystem
+            Effect: Allow
+            Action:
+              - ecr:*
+              - codeartifact:*
+              - eks:*
+              - ecs:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Observability & audit (logs, metrics, trails, config) (grant)
+          ## -------------------------------------------------------------------
+          - Sid: ObservabilityAndAuditEnablement
+            Effect: Allow
+            Action:
+              - logs:*
+              - cloudwatch:*
+              - cloudtrail:*
+              - xray:*
+              - config:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Systems Manager (for diagnostics and controlled access paths) (grant)
+          ## -------------------------------------------------------------------
+          - Sid: SystemsManagementAndDiagnostics
+            Effect: Allow
+            Action:
+              - ssm:*
+              - ssmmessages:*
+              - ec2messages:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Reachability analysis utilities (Network Insights) (grant)
+          ## -------------------------------------------------------------------
+          - Sid: NetworkReachabilityAnalysis
+            Effect: Allow
+            Action:
+              - ec2:CreateNetworkInsightsPath
+              - ec2:StartNetworkInsightsAnalysis
+              - ec2:DescribeNetworkInsights*
+              - ec2:DeleteNetworkInsightsPath
+              - ec2:DeleteNetworkInsightsAnalysis
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Eventing & scheduling for tests (grant)
+          ## - Added PutEvents (commonly needed to emit events in workflows)
+          ## -------------------------------------------------------------------
+          - Sid: EventingAndSchedulingForTests
+            Effect: Allow
+            Action:
+              ## - events:PutRule
+              ## - events:PutTargets
+              ## - events:DescribeRule
+              ## - events:PutEvents
+              - events:*
+              - scheduler:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## IAM enablement for prototypes: PassRole ceiling + discovery + SLR (grant)
+          ## - No IAM write mutations here; Deny block below enforces guardrail.
+          ## -------------------------------------------------------------------
+          - Sid: IdentityEnablementForPrototypes
+            Effect: Allow
+            Action:
+              - iam:PassRole
+              - iam:Get*
+              - iam:List*
+              - iam:CreateServiceLinkedRole
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## KMS / Secrets Manager for pipelines and integration (grant)
+          ## -------------------------------------------------------------------
+          - Sid: KeyAndSecretUsageForPipelines
+            Effect: Allow
+            Action:
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:GenerateDataKey
+              - kms:GenerateDataKeyWithoutPlaintext
+              - kms:DescribeKey
+              - kms:List*
+              - secretsmanager:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Resource Explorer / Tagging / Cross-account discovery (grant)
+          ## -------------------------------------------------------------------
+          - Sid: DiscoveryTaggingAndResourceExplorer
+            Effect: Allow
+            Action:
+              - resource-explorer-2:*
+              - resource-groups:*
+              - tag:GetResources
+              - tag:GetTagValues
+              - account:ListRegions
+              - organizations:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Q assistants (grant)
+          ## -------------------------------------------------------------------
+          - Sid: AmazonQAndConsoleToCodeEnablement
+            Effect: Allow
+            Action:
+              - q:*
+              - qbusiness:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## IAM Access Analyzer (read/validation only) (grant-RO)
+          ## -------------------------------------------------------------------
+          - Sid: AccessAnalyzerReadOnlyAndValidation
+            Effect: Allow
+            Action:
+              - access-analyzer:Get*
+              - access-analyzer:List*
+              - access-analyzer:ValidatePolicy
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Observability Access Manager (linking/read) (grant)
+          ## -------------------------------------------------------------------
+          - Sid: ObservabilityAccessManagerLinking
+            Effect: Allow
+            Action:
+              - oam:Get*
+              - oam:List*
+              - oam:*Link*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Messaging for network workflows (tag-gated; compact)
+          ## -------------------------------------------------------------------
+          - Sid: MessagingProvisioningForWorkflows
+            Effect: Allow
+            Action:
+              - sns:*          ## was: Create/Delete/List/Get/SetAttrs/Subscribe/Unsubscribe/Publish/Tag/Untag
+              - sqs:*          ## was: Create/Delete/List/Get/SetAttrs/Send/Receive/Delete/ChangeVis/Purge/Tag/Untag
+            Resource: "*"
+            Condition:
+              StringEqualsIfExists:
+                aws:ResourceTag/Role: "network-architecture"
+              StringEquals:
+                aws:RequestTag/Role: "network-architecture"
+              ForAllValues:StringEquals:
+                aws:TagKeys: [Role, Owner, DevOps]
+
+          ## -------------------------------------------------------------------
+          ## EventBridge Pipes enablement for integration experimentation (grant)
+          ## -------------------------------------------------------------------
+          - Sid: EventBridgePipesEnablement
+            Effect: Allow
+            Action:
+              - pipes:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## RAM admin for cross-account sharing (grant)
+          ## - No Organizations-wide enablement implied (see guardrail below).
+          ## -------------------------------------------------------------------
+          - Sid: ResourceAccessManagerAdmin
+            Effect: Allow
+            Action:
+              ## - ram:CreateResourceShare
+              ## - ram:UpdateResourceShare
+              ## - ram:DeleteResourceShare
+              ## - ram:AssociateResourceShare
+              ## - ram:DisassociateResourceShare
+              ## - ram:AssociateResourceSharePermission
+              ## - ram:DisassociateResourceSharePermission
+              ## - ram:GetResourceShares
+              ## - ram:GetResourceShareAssociations
+              ## - ram:GetResourceShareInvitations
+              ## - ram:ListResources
+              ## - ram:ListPrincipals
+              ## - ram:ListPermissions
+              ## - ram:ListPermissionVersions
+              ## - ram:GetPermission
+              ## - ram:GetResourcePolicies
+              ## - ram:TagResource
+              ## - ram:UntagResource
+              ## - ram:AcceptResourceShareInvitation
+              ## - ram:RejectResourceShareInvitation
+              - ram:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## GUARDRAIL: prevent enabling org-wide RAM sharing (deny)
+          ## -------------------------------------------------------------------
+          - Sid: DenyOrgWideRAMSharing
+            Effect: Deny
+            Action:
+              - ram:EnableSharingWithAwsOrganization
+              - ram:DisableSharingWithAwsOrganization
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Service Quotas (network-scoped): read + request increases (grant)
+          ## -------------------------------------------------------------------
+          - Sid: ServiceQuotasNetworkScoped
+            Effect: Allow
+            Action:
+              - servicequotas:Get*
+              - servicequotas:List*
+              - servicequotas:RequestServiceQuotaIncrease
+            Resource: "*"
+            Condition:
+              StringEquals:
+                servicequotas:service:
+                  - ec2
+                  - elasticloadbalancing
+                  - route53
+                  - route53resolver
+                  - directconnect
+                  - globalaccelerator
+                  - network-firewall
+                  - vpc-lattice
+                  - networkmanager
+                  - ram
+
+          ## -------------------------------------------------------------------
+          ## Security services visibility (read-only) (grant-RO)
+          ## -------------------------------------------------------------------
+          - Sid: SecurityServicesReadOnly
+            Effect: Allow
+            Action:
+              - securityhub:Get*
+              - securityhub:Describe*
+              - securityhub:List*
+              - guardduty:Get*
+              - guardduty:List*
+              - inspector2:Get*
+              - inspector2:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Health (read-only) (grant-RO)
+          ## -------------------------------------------------------------------
+          - Sid: HealthReadOnly
+            Effect: Allow
+            Action:
+              - health:Describe*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Trusted Advisor (read-only) (grant-RO)
+          ## -------------------------------------------------------------------
+          - Sid: TrustedAdvisorReadOnly
+            Effect: Allow
+            Action:
+              - trustedadvisor:Describe*
+              - trustedadvisor:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Support (full case + TA via Support API) (grant)
+          ## -------------------------------------------------------------------
+          - Sid: SupportFull
+            Effect: Allow
+            Action:
+              - support:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Internet & VPC Network Monitor (full admin) (grant)
+          ## -------------------------------------------------------------------
+          - Sid: InternetAndNetworkMonitorAdmin
+            Effect: Allow
+            Action:
+              - internetmonitor:*
+              - networkmonitor:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Firewall Manager (read-only) (grant-RO)
+          ## -------------------------------------------------------------------
+          - Sid: FirewallManagerReadOnly
+            Effect: Allow
+            Action:
+              - fms:Get*
+              - fms:List*
+            Resource: "*"
+
+          ## ## -------------------------------------------------------------------
+          ## # EC2 IPAM (full admin) (grant)
+          ## ## -------------------------------------------------------------------
+          ## - Sid: EC2IPAMAdmin
+          ##   Effect: Allow
+          ##   Action:
+          ##     - ec2:CreateIpam*
+          ##     - ec2:DeleteIpam*
+          ##     - ec2:ModifyIpam*
+          ##     - ec2:GetIpam*
+          ##     - ec2:DescribeIpam*
+          ##     - ec2:CreateIpamScope
+          ##     - ec2:DeleteIpamScope
+          ##     - ec2:CreateIpamPool
+          ##     - ec2:ModifyIpamPool
+          ##     - ec2:DeleteIpamPool
+          ##     - ec2:ProvisionIpamPoolCidr
+          ##     - ec2:DeprovisionIpamPoolCidr
+          ##     - ec2:AllocateIpamPoolCidr
+          ##     - ec2:ReleaseIpamPoolAllocation
+          ##     - ec2:GetIpamPoolCidrs
+          ##     - ec2:GetIpamAddressHistory
+          ##     - ec2:GetIpamDiscoveredAccounts
+          ##     - ec2:GetIpamDiscoveredResourceCidrs
+          ##     - ec2:GetIpamResourceCidrs
+          ##   Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Macie (read-only) for data classification visibility (grant-RO)
+          ## -------------------------------------------------------------------
+          - Sid: MacieReadOnly
+            Effect: Allow
+            Action:
+              - macie2:Get*
+              - macie2:List*
+              - macie2:Describe*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Detective (full admin) (grant)
+          ## -------------------------------------------------------------------
+          - Sid: DetectiveAdmin
+            Effect: Allow
+            Action:
+              - detective:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Security Lake (read-only) for telemetry access (grant-RO)
+          ## -------------------------------------------------------------------
+          - Sid: SecurityLakeReadOnly
+            Effect: Allow
+            Action:
+              - securitylake:Get*
+              - securitylake:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Audit Manager (network-scoped admin) (grant)
+          ## - Manage only network-tagged assessments/evidence; everything else RO.
+          ## -------------------------------------------------------------------
+          - Sid: AuditManagerNetworkScopedAdmin
+            Effect: Allow
+            Action:
+              ## - auditmanager:CreateAssessment
+              ## - auditmanager:UpdateAssessment
+              ## - auditmanager:DeleteAssessment
+              ## - auditmanager:GetAssessment
+              ## - auditmanager:ListAssessments
+              ## - auditmanager:CreateAssessmentReport
+              ## - auditmanager:GetAssessmentReportUrl
+              ## - auditmanager:BatchImportEvidenceToAssessment
+              ## - auditmanager:BatchAssociateAssessmentReportEvidence
+              ## - auditmanager:BatchDisassociateAssessmentReportEvidence
+              ## - auditmanager:GetEvidence
+              ## - auditmanager:GetEvidenceByEvidenceFolder
+              ## - auditmanager:GetEvidenceFolder
+              ## - auditmanager:ListEvidence
+              ## - auditmanager:ListEvidenceFolders
+              ## - auditmanager:TagResource
+              ## - auditmanager:UntagResource
+              ## - auditmanager:ListTagsForResource
+              - auditmanager:*
+            Resource: "*"
+            Condition:
+              StringEqualsIfExists:
+                aws:ResourceTag/Domain: "network"
+              StringEquals:
+                aws:RequestTag/Domain: "network"
+              ForAllValues:StringEquals:
+                aws:TagKeys: [Domain, Owner, DevOps]
+
+          ## -------------------------------------------------------------------
+          ## GUARDRAILS (EXPLICIT DENY): non-bypassable controls (deny)
+          ## -------------------------------------------------------------------
+
+          ## Prevent IAM policy/role mutations to avoid privilege escalation. (deny)
+          - Sid: DenyIAMMutation
+            Effect: Deny
+            Action:
+              - iam:CreatePolicy
+              - iam:CreatePolicyVersion
+              - iam:SetDefaultPolicyVersion
+              - iam:DeletePolicy
+              - iam:CreateRole
+              - iam:DeleteRole
+              - iam:AttachRolePolicy
+              - iam:DetachRolePolicy
+              - iam:PutRolePolicy
+              - iam:DeleteRolePolicy
+              - iam:UpdateAssumeRolePolicy
+            Resource: "*"
+
+          ## Gate PassRole to only roles explicitly tagged PassRole=true. (deny)
+          - Sid: DenyPassRoleUnlessTagged
+            Effect: Deny
+            Action:
+              - iam:PassRole
+            Resource: "*"
+            Condition:
+              StringNotEqualsIfExists:
+                aws:ResourceTag/PassRole: "true"
+
+          ## Enforce MFA presence on all requests (deny)
+          - Sid: DenyRequestsWithoutMFAFlag
+            Effect: Deny
+            Action: "*"
+            Resource: "*"
+            Condition:
+              BoolIfExists:
+                aws:MultiFactorAuthPresent: "false"
+
+          ## Require session tag mfa=true on principal (deny)
+          - Sid: DenyUnlessSessionTaggedMFA
+            Effect: Deny
+            Action: "*"
+            Resource: "*"
+            Condition:
+              StringNotEquals:
+                aws:PrincipalTag/mfa: "true"
+
+          ## Optional: block old MFA (age > 3600s) (deny)
+          - Sid: DenyIfMFAOlderThanOneHour
+            Effect: Deny
+            Action: "*"
+            Resource: "*"
+            Condition:
+              NumericGreaterThanIfExists:
+                aws:MultiFactorAuthAge: 3600
+
+## ------------------------------------------------------------------------------
+## Outputs — Permissions Boundary
+## ------------------------------------------------------------------------------
+## Exposes the fully qualified ARN of the permissions-boundary managed policy
+## created in this stack. Useful for:
+##   - Validation/troubleshooting (confirm exact ARN used by roles).
+##   - Passing into other stacks as a parameter (if you choose to export it).
+##   - CI checks to assert the correct boundary is enforced.
+## Note: !Ref on AWS::IAM::ManagedPolicy returns the policy ARN (not the name).
+
+Outputs:
+
+  ## Resolved ARN of the permissions-boundary managed policy.
+  NetworkArchitecturePermissionsBoundaryArn:
+    Description: "ARN of the Network Architecture IAM permissions boundary managed policy"
+    Value: !Ref NetworkArchitecturePermissionsBoundary

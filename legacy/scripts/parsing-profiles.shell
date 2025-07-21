@@ -1,0 +1,282 @@
+#!/usr/bin/env bash
+
+## File: scripts/parse-profiles.shell
+
+set -euo pipefail  ## Strict mode: exit on error, undefined var use, and pipeline failure
+set -x;          ## Enable for execution tracing/debugging
+
+## POSIX locale standard
+export LC_ALL=C   ## Ensure consistent sorting and character handling (POSIX-compliant)
+
+# Create a secure, temporary working directory (auto-cleaned at script exit)
+export TMP_DIR="$( mktemp -d )";
+trap '[[ -d "${TMP_DIR}" ]] && rm -rf "${TMP_DIR}"' EXIT;
+
+#------------------------------------------------------------------------------#
+
+function newline () { echo -e "\n"; }; alias new-line='newline';
+
+#------------------------------------------------------------------------------#
+
+function main () {
+
+    ## tracking_process ${FUNCNAME} "${@}";
+    oIFS="${IFS}";
+
+    ## Process command-line arguments and map them to local variables
+    for xitem in "${@}"; do
+
+      IFS='=' read -r key value <<< "$(
+        echo -e "${xitem}" | sed -e '1s|^\(-\)\{1,\}||'
+      )"; #echo -e "\nxitem: '${xitem}'\nkey: '${key}'\t->\tvalue: '${value}'";
+
+      #### ---------------------------------------------------------------------
+      ## Match accepted arguments
+      [[ $key =~ ^(account|a)$ ]] && export account_name="${value}";
+      [[ $key =~ ^(role|r)$ ]] && export role_name="${value}";
+      [[ $key =~ ^(profile|p)$ ]] && export target_profile="${value}";
+      [[ $key =~ ^(region|g)$ ]] && export target_region="${value}";
+
+      #### ---------------------------------------------------------------------
+      ## Special options
+      [[ $key == "help" ]] && local script_helper=true;
+      [[ $key == "debug" ]] && local debug=true;
+      [[ $key == "dry-run" ]] && local dry_run=true;
+      [[ $key == "verbose" ]] && local verbose=true;
+
+    done; IFS="${oIFS}";
+
+    #### -----------------------------------------------------------------------
+    ## Set custom values if not supplied
+    [[ -z ${account_name:-} ]] && local account_name=false;
+    [[ -z ${role_name:-} ]] && local role_name=false;
+    [[ -z ${target_profile:-} ]] && local target_profile="default";
+    [[ -z ${target_region:-} ]] && local target_region="us-east-1";
+
+    #### -----------------------------------------------------------------------
+    ## Set default values if not supplied
+    [[ -z ${debug:-} ]] && debug=false;
+    [[ -z ${dry_run:-} ]] && dry_run=false;
+    [[ -z ${verbose:-} ]] && verbose=false;
+
+    #### -----------------------------------------------------------------------
+    ## Display usage help if requested
+    [[ -z ${script_helper:-} ]] && script_helper=false;
+    if [[ ${script_helper:-} == true ]]; then
+      # script_helper;
+      exit 0;
+    fi;
+
+    #### -----------------------------------------------------------------------
+    local start_time="$(date '+%Y-%m-%d %H:%M:%S')";
+    SECONDS=0;  ## Start timer
+
+    #### -----------------------------------------------------------------------
+    ## Prompt for AWS Account-name if not provided
+    local prompt_message="AWS Account name";
+    while [[ -z "${account_name}" ]]; do
+      newline;
+      read -e -p "${prompt_message}: " account_name;
+      if [[ "${account_name// /}" == "" ]]; then
+        warning "${prompt_message} is required!";
+        account_name=false;
+        return 1;
+      fi;
+    done;
+
+    #### -----------------------------------------------------------------------
+    ## Prompt for AWS IAM Role-name if not provided
+    local prompt_message="AWS IAM Role name";
+    while [[ -z "${role_name}" ]]; do
+      newline;
+      read -e -p "${prompt_message}: " role_name;
+      if [[ "${role_name// /}" == "" ]]; then
+        warning "${prompt_message} is required!";
+        role_name=false;
+        return 2;
+      fi;
+    done;
+
+    #### -----------------------------------------------------------------------
+    # role_name="${1}";
+    # prefix_name="$( cut -d'-' -f1-2 <<< "${role_name}" )";
+    # account_name="${role_name%%--*}-account";
+    # target_profile="${prefix_name}-${role_name##*--}-role";
+    # profile_policies="${account_name}/${role_name%%--*}--${role_name##*--}.policies";
+    # attached_policies="${account_name}/${target_profile}--attached-policies.json";
+
+    output_location="${account_name}/${account_name}";
+
+    profile_policies="${output_location}--account.policies";
+
+    attached_policies="${output_location}--policies.json";
+    managed_policies="${output_location}--managed-policies.json";
+    custom_policies="${output_location}--custom-policies.json";
+
+    summarized="summarized";
+    unified_policies="${output_location}--${summarized}.json";
+
+    tmp_dir=$( mktemp -d );
+    policies=();
+
+    rm -rf ${account_name} && mkdir -p ${account_name};
+
+    report_folder="reports";
+    rm -rf ${report_folder} && mkdir ${report_folder};
+
+    #### -----------------------------------------------------------------------
+    # Get all attached policy ARNs
+    policy_arns=$(
+      aws iam list-attached-role-policies \
+          --role-name "${role_name}" \
+          --profile "${target_profile}" \
+          --query 'AttachedPolicies[*].PolicyArn' \
+          --output text
+    );
+    # echo -e;
+
+    echo -e "\nAccount: ${account_name}\nProfile: ${target_profile}\n" | \
+    tee "${profile_policies}";
+
+    for each in ${policy_arns[@]}; do
+      echo -e "Policy: ${each}" | tee -a "${profile_policies}";
+    done;
+
+    ## Fetch each policy document and build array
+    for arn in ${policy_arns[@]}; do
+      policy_name=$( basename "${arn}" );
+      version_id=$(
+        aws iam get-policy \
+            --policy-arn "${arn}" \
+            --profile "${target_profile}" \
+            --query 'Policy.DefaultVersionId' \
+            --output text
+      );
+      #echo -e "Policy-ID: ${version_id}";
+      policy=$(
+        aws iam get-policy-version \
+            --policy-arn "${arn}" \
+            --version-id "${version_id}" \
+            --profile "${target_profile}" \
+            --output json
+      );
+      echo -e "\nPolicy [ ${policy_name} ]: ${policy}";
+      ## Enrich with PolicyName and ARN for context
+      enriched=$(
+        jq --arg name "${policy_name}" \
+          --arg arn "$arn" \
+          '{
+                PolicyName: $name,
+                PolicyArn: $arn
+            } + .PolicyVersion.Document' \
+        <<< "${policy}"
+      );
+      policies+=( "${enriched}" );
+    done;
+
+    #### -----------------------------------------------------------------------
+    # ## Merge and sort by PolicyName
+    # jq -s 'sort_by( .PolicyName )' <<< "${policies[@]}" \
+    # > "${attached_policies}";
+
+    ## Merge and sort by Managed Policies by name
+    jq -s '[ .[] | select( .PolicyArn | test( "^arn:aws:iam::aws:policy/" )) ] | sort_by( .PolicyName )' \
+    <<< "${policies[@]}" > "${managed_policies}";
+
+    ## Merge and sort by Custom Policies by name
+    jq -s '[ .[] | select( .PolicyArn | test( "^arn:aws:iam::aws:policy/" ) | not ) ] | sort_by( .PolicyName )' \
+    <<< "${policies[@]}" > "${custom_policies}";
+
+    jq '
+      def extract_actions(effect):
+        map( .Statement ) | flatten |
+        map( select( .Effect == effect ) ) |
+        map(
+          if ( .Action | type ) == "array" then .Action[] else .Action end
+        ) | unique | sort;
+        {
+          Allow: extract_actions( "Allow" ),
+          Deny: extract_actions( "Deny" )
+        }
+    ' "${custom_policies}" \
+    > "${unified_policies}";
+
+    declare -a policies=($(
+      find . -type f -name "*--${summarized}.json" | \
+      sed -e 's|^\.\/||g'
+    ));
+
+    #### -----------------------------------------------------------------------
+    for each in ${policies[@]}; do echo -e "Policy: ${each}"; done;
+
+    ## Note: This works but everything is all bundled up into single sets (Allow/Deny)
+    jq -s '
+    {
+      Allow: map( .Allow[] ) | unique | sort,
+      Deny:  map( .Deny[]  ) | unique | sort
+    }
+    ' "${policies[@]}" \
+    > ${report_folder}/unified-policies.json;
+
+    ## Aggregating all AWS IAM Custom Roles/Policies
+    jq '
+      def group_services( list ):
+        list
+        | map( split( ":" ) )
+        | group_by( .[0] )
+        | map( { ( .[0][0] ): map( .[1] ) } )
+        | add;
+      .Allow = group_services( .Allow ) |
+      .Deny  = group_services( .Deny )
+    ' ${report_folder}/unified-policies.json \
+    > ${report_folder}/custom-policies.json;
+
+    ## Aggregating all AWS IAM Managed Roles/Policies
+    jq -s 'add | unique_by( .PolicyArn ) | sort_by( .PolicyName )' \
+    $( find . -type f -name "*--managed-policies.json" ) \
+    > ${report_folder}/managed-policies.json;
+
+    #### -----------------------------------------------------------------------
+    rm ${report_folder}/unified-policies.json;
+
+    find . -type f -name '*.policies' | \
+    xargs -I {} cat {} | \
+    tee -a ${report_folder}/profile-policies.list;
+
+    cat ${report_folder}/profile-policies.list | \
+    grep -E "^Policy: arn:aws:iam::aws:policy/.*" | \
+    awk -F':' '{print $7}' | \
+    sort | \
+    uniq - \
+    > ${report_folder}/managed-policies.list;
+
+    cat ${report_folder}/profile-policies.list | \
+    grep -E "^(Policy: arn:aws:iam::)([0-9]*)(:policy/)(.*)" | \
+    awk -F':' '{print $7}' | \
+    sort | \
+    uniq - \
+    > ${report_folder}/custom-policies.list;
+
+    #### -----------------------------------------------------------------------
+    rm ${report_folder}/profile-policies.list;
+
+    return 0;
+}; alias parse-listings='main';
+
+#------------------------------------------------------------------------------#
+
+[[ -z "${script_name+x}" ]] && script_name="${0}";
+
+script_filename="${BASH_SOURCE[0]##*/}";
+script_filename="${script_filename%.*}";
+
+#------------------------------------------------------------------------------#
+
+if [[ ${#@} -eq 0 || "${1,,}" =~ ^-*(h|help)$ ]]; then
+        main --help ;
+  else  main "${@}";
+        result=${?}; exit ${result};
+        ## newline; message "Done."; newline;
+fi;
+
+#------------------------------------------------------------------------------#

@@ -1,0 +1,139 @@
+---
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: NetworkEngineeringRole with permissions boundary for infrastructure development and automation
+
+Resources:
+
+  NetworkEngineeringBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: NetworkEngineeringBoundary
+      Description: Permissions boundary to prevent privilege escalation and ensure scoped automation
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowScopedActions
+            Effect: Allow
+            Action:
+              - ec2:*
+              - ssm:*
+              - ssmmessages:*
+              - ec2messages:*
+              - iam:PassRole
+              - iam:Get*
+              - iam:List*
+              - logs:*
+              - cloudwatch:*
+              - s3:*
+              - cloudformation:*
+              - qbusiness:QueryAssistant
+              - secretsmanager:GetSecretValue
+              - secretsmanager:DescribeSecret
+              - events:PutRule
+              - events:PutTargets
+              - events:DescribeRule
+            Resource: "*"
+
+          - Sid: ExplicitDenyEscalation
+            Effect: Deny
+            Action:
+              - iam:CreatePolicyVersion
+              - iam:SetDefaultPolicyVersion
+              - iam:AttachRolePolicy
+              - iam:PutRolePolicy
+              - iam:CreateAccessKey
+              - iam:UpdateAssumeRolePolicy
+            Resource: "*"
+
+  NetworkEngineeringPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: NetworkEngineeringPolicy
+      Description: Role policy for engineers building and maintaining network automation infrastructure
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EC2Resources
+            Effect: Allow
+            Action: ec2:*
+            Resource: "*"
+
+          - Sid: AutomationTools
+            Effect: Allow
+            Action:
+              - ssm:*
+              - ssmmessages:*
+              - ec2messages:*
+              - secretsmanager:GetSecretValue
+              - secretsmanager:DescribeSecret
+            Resource: "*"
+
+          - Sid: InfraDev
+            Effect: Allow
+            Action:
+              - cloudformation:*
+              - logs:*
+              - cloudwatch:*
+              - s3:*
+              - events:PutRule
+              - events:PutTargets
+              - events:DescribeRule
+            Resource: "*"
+
+          - Sid: IAMLimited
+            Effect: Allow
+            Action:
+              - iam:Get*
+              - iam:List*
+              - iam:PassRole
+            Resource: "*"
+
+          - Sid: AmazonQAccess
+            Effect: Allow
+            Action: qbusiness:QueryAssistant
+            Resource: "*"
+
+  NetworkEngineeringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: NetworkEngineeringRole
+      Description: Role for network engineers developing and managing network automation systems and tooling
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowEngineeringUsers
+            Effect: Allow
+            Principal:
+              AWS: "*"
+            Action: sts:AssumeRole
+            Condition:
+              Bool:
+                aws:MultiFactorAuthPresent: true
+      PermissionsBoundary: !Ref NetworkEngineeringBoundary
+      ManagedPolicyArns:
+        - !Ref NetworkEngineeringPolicy
+      Tags:
+        - Key: Purpose
+          Value: NetworkEngineering
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Role
+          Value: network-engineering
+        - Key: Team
+          Value: Network
+
+Outputs:
+
+  NetworkEngineeringRoleArn:
+    Value: !GetAtt NetworkEngineeringRole.Arn
+    Description: ARN of the IAM role for network engineering
+
+  NetworkEngineeringPolicyArn:
+    Value: !Ref NetworkEngineeringPolicy
+    Description: ARN of the IAM policy used by the role
+
+  NetworkEngineeringBoundaryArn:
+    Value: !Ref NetworkEngineeringBoundary
+    Description: ARN of the IAM permissions boundary attached to the role

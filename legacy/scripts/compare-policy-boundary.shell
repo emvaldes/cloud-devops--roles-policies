@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+
+: <<<'DOCUMENTATION'
+Name:  compare-policy-boundary.shell
+Objective: Compare an IAM managed policy Allow actions vs. what a permissions boundary Allows. Ignores Resource/Condition/Explicit deny nuance. Fast sanity check for action coverage.
+
+Dependencies: awscli, jq
+Usage: compare-policy-boundary --account=123456789012 \
+                               --policy=network-architecture-policy \
+                               --boundary=network-architecture-permissions-boundary
+
+Warning: If it prints only “OK…”, your managed policy is in sync with its boundary’s allow scope at the action level.
+DOCUMENTATION
+
+function compare_policy_to_boundary () {
+  local managed_policy_arn="$1"; local boundary_policy_arn="$2";
+  local mp_ver=""; local bp_ver=""; local mp_doc_json=""; local bp_doc_json="";
+  local tmpdir=""; tmpdir="$(mktemp -d)";
+
+  mp_ver="$(aws iam get-policy --policy-arn "${managed_policy_arn}" --query 'Policy.DefaultVersionId' --output text)";
+  bp_ver="$(aws iam get-policy --policy-arn "${boundary_policy_arn}" --query 'Policy.DefaultVersionId' --output text)";
+
+  mp_doc_json="$(aws iam get-policy-version --policy-arn "${managed_policy_arn}" --version-id "${mp_ver}" --query 'PolicyVersion.Document' --output json)";
+  bp_doc_json="$(aws iam get-policy-version --policy-arn "${boundary_policy_arn}" --version-id "${bp_ver}" --query 'PolicyVersion.Document' --output json)";
+
+  echo "${mp_doc_json}" > "${tmpdir}/mp.json";
+  echo "${bp_doc_json}" > "${tmpdir}/bp.json";
+
+  # Extract all Allow Actions from both docs as sorted unique lists
+  jq -r '
+    .Statement
+    | (type=="array" ? . : [.] )
+    | map(select(.Effect=="Allow"))
+    | map(.Action)
+    | map( (type=="array")? . : [.] )
+    | add
+    | map(tostring)
+    | sort
+    | unique
+    | .[]
+  ' "${tmpdir}/mp.json" > "${tmpdir}/mp_actions.txt";
+
+  jq -r '
+    .Statement
+    | (type=="array" ? . : [.] )
+    | map(select(.Effect=="Allow"))
+    | map(.Action)
+    | map( (type=="array")? . : [.] )
+    | add
+    | map(tostring)
+    | sort
+    | unique
+    | .[]
+  ' "${tmpdir}/bp.json" > "${tmpdir}/bp_patterns.txt";
+
+  # Build regexes from boundary patterns (e.g., "ec2:*" -> "^ec2:.*$")
+  mapfile -t BP_REGEXES < <(sed -E 's/[][(){}+.?^$|\\]/\\&/g; s/\*/.*/g; s/^/^/; s/$/$/' "${tmpdir}/bp_patterns.txt");
+
+  # For each managed action, check if any boundary pattern matches
+  echo "Checking coverage of managed policy against boundary…";
+  local missing=0;
+  while IFS= read -r action; do
+    local covered=0;
+    for rx in "${BP_REGEXES[@]}"; do
+      if [[ "${action}" =~ ${rx} ]]; then covered=1; break; fi;
+    done;
+    if [[ ${covered} -eq 0 ]]; then
+      echo "NOT COVERED by boundary: ${action}";
+      missing=$((missing+1));
+    fi;
+  done < "${tmpdir}/mp_actions.txt";
+
+  if [[ ${missing} -eq 0 ]]; then
+    echo "OK: All managed-policy Allow actions are covered by the boundary's Allow patterns.";
+  else
+    echo "TOTAL not covered: ${missing}";
+  fi;
+
+  rm -rf "${tmpdir}";
+  return 0;
+}; alias compare-policy-to-boundary='compare_policy_to_boundary';
