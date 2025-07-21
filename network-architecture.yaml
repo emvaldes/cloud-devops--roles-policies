@@ -1,0 +1,210 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: NetworkArchitectureRole with permissions boundary and security enforcement for AWS network prototyping
+
+Resources:
+
+  NetworkArchitectureBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: NetworkArchitectureBoundary
+      Description: Permissions boundary for network prototyping (explicit deny for prod)
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowScopedServices
+            Effect: Allow
+            Action:
+              - cloudformation:*
+              - codecommit:*
+              - codebuild:*
+              - codedeploy:*
+              - codepipeline:*
+              - ec2:*
+              - networkmanager:*
+              - globalaccelerator:*
+              - elasticloadbalancing:*
+              - route53resolver:*
+              - vpc-lattice:*
+              - network-firewall:*
+              - directconnect:*
+              - resource-explorer:*
+              - resource-groups:*
+              - tag:GetResources
+              - tag:GetTagValues
+              - events:PutRule
+              - events:PutTargets
+              - events:DescribeRule
+              - iam:PassRole
+              - iam:Get*
+              - iam:List*
+              - logs:*
+              - cloudwatch:*
+              - cloudtrail:*
+              - xray:*
+              - config:*
+              - config:Put*
+              - config:Delete*
+              - ssm:*
+              - ssmmessages:*
+              - ec2messages:*
+              - s3:*
+              - cloudshell:*
+              - qbusiness:QueryAssistant
+            Resource: "*"
+
+          - Sid: DenyProdTaggedResources
+            Effect: Deny
+            Action: "*"
+            Resource: "*"
+            Condition:
+              StringEquals:
+                aws:ResourceTag/Environment: "prod"
+
+  NetworkArchitecturePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: NetworkArchitecturePolicy
+      Description: Role policy for secure network architecture design
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: CloudFormation
+            Effect: Allow
+            Action: cloudformation:*
+            Resource: "*"
+
+          - Sid: IaCServices
+            Effect: Allow
+            Action:
+              - codecommit:*
+              - codebuild:*
+              - codedeploy:*
+              - codepipeline:*
+            Resource: "*"
+
+          - Sid: EC2ScopedNetworking
+            Effect: Allow
+            Action: ec2:*
+            Resource: "*"
+            Condition:
+              StringEqualsIfExists:
+                ec2:ResourceTag/Role: network-architecture
+
+          - Sid: CoreNetworkingInfra
+            Effect: Allow
+            Action:
+              - networkmanager:*
+              - globalaccelerator:*
+              - elasticloadbalancing:*
+              - route53resolver:*
+              - directconnect:*
+              - network-firewall:*
+              - vpc-lattice:*
+            Resource: "*"
+
+          - Sid: DiscoveryAndTagging
+            Effect: Allow
+            Action:
+              - resource-explorer:*
+              - resource-groups:*
+              - tag:GetResources
+              - tag:GetTagValues
+            Resource: "*"
+
+          - Sid: IAMScopedAccess
+            Effect: Allow
+            Action:
+              - iam:PassRole
+              - iam:Get*
+              - iam:List*
+            Resource: "*"
+
+          - Sid: Observability
+            Effect: Allow
+            Action:
+              - logs:*
+              - cloudwatch:*
+              - cloudtrail:*
+              - xray:*
+              - config:*
+              - config:Put*
+              - config:Delete*
+            Resource: "*"
+
+          - Sid: EC2Diagnostics
+            Effect: Allow
+            Action:
+              - ssm:*
+              - ssmmessages:*
+              - ec2messages:*
+            Resource: "*"
+
+          - Sid: OptionalStorage
+            Effect: Allow
+            Action:
+              - s3:PutObject
+            Resource: "arn:aws:s3:::network-architecture-artifacts/*"
+
+          - Sid: CloudShell
+            Effect: Allow
+            Action: cloudshell:*
+            Resource: "*"
+
+          - Sid: AmazonQ
+            Effect: Allow
+            Action: qbusiness:QueryAssistant
+            Resource: "*"
+
+          - Sid: EventBridgePrototype
+            Effect: Allow
+            Action:
+              - events:PutRule
+              - events:PutTargets
+              - events:DescribeRule
+            Resource: "*"
+
+  NetworkArchitectureRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: NetworkArchitectureRole
+      Description: Role for AWS network engineers to prototype complex network designs securely
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowOrgEngineers
+            Effect: Allow
+            Principal:
+              AWS: "*"
+            Action: sts:AssumeRole
+            Condition:
+              Bool:
+                aws:MultiFactorAuthPresent: true
+      PermissionsBoundary: !Ref NetworkArchitectureBoundary
+      ManagedPolicyArns:
+        - !Ref NetworkArchitecturePolicy
+      Tags:
+        - Key: Purpose
+          Value: NetworkArchitecture
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Role
+          Value: network-architecture
+        - Key: Team
+          Value: Network
+        - Key: Environment
+          Value: non-prod
+
+Outputs:
+
+  NetworkArchitectureRoleArn:
+    Value: !GetAtt NetworkArchitectureRole.Arn
+    Description: ARN of the IAM role for network architecture
+
+  NetworkArchitecturePolicyArn:
+    Value: !Ref NetworkArchitecturePolicy
+    Description: ARN of the IAM policy used by the role
+
+  NetworkArchitectureBoundaryArn:
+    Value: !Ref NetworkArchitectureBoundary
+    Description: ARN of the IAM permissions boundary attached to the role

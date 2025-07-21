@@ -1,0 +1,145 @@
+---
+
+AWSTemplateFormatVersion: "2010-09-09"
+Description: NetworkPlatformRole with permissions boundary for operating network automation infrastructure
+
+Resources:
+
+  NetworkPlatformBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: NetworkPlatformBoundary
+      Description: Permissions boundary for operating network automation platforms without privilege escalation
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowScopedAutomation
+            Effect: Allow
+            Action:
+              - ecs:*
+              - eks:*
+              - lambda:*
+              - codepipeline:*
+              - codebuild:*
+              - codedeploy:*
+              - ssm:*
+              - ssmmessages:*
+              - ec2messages:*
+              - logs:*
+              - cloudwatch:*
+              - s3:*
+              - events:PutRule
+              - events:PutTargets
+              - events:DescribeRule
+              - iam:PassRole
+              - iam:Get*
+              - iam:List*
+              - qbusiness:QueryAssistant
+              - cloudformation:*
+            Resource: "*"
+
+          - Sid: DenyIAMPrivilegeEscalation
+            Effect: Deny
+            Action:
+              - iam:CreatePolicyVersion
+              - iam:SetDefaultPolicyVersion
+              - iam:AttachRolePolicy
+              - iam:PutRolePolicy
+              - iam:CreateAccessKey
+              - iam:UpdateAssumeRolePolicy
+            Resource: "*"
+
+  NetworkPlatformPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: NetworkPlatformPolicy
+      Description: Role policy for maintaining and operating network automation infrastructure
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AutomationControl
+            Effect: Allow
+            Action:
+              - ecs:*
+              - eks:*
+              - lambda:*
+              - codepipeline:*
+              - codebuild:*
+              - codedeploy:*
+            Resource: "*"
+
+          - Sid: OperationalManagement
+            Effect: Allow
+            Action:
+              - ssm:*
+              - ssmmessages:*
+              - ec2messages:*
+              - logs:*
+              - cloudwatch:*
+              - s3:*
+              - events:PutRule
+              - events:PutTargets
+              - events:DescribeRule
+            Resource: "*"
+
+          - Sid: IAMReadAndPass
+            Effect: Allow
+            Action:
+              - iam:Get*
+              - iam:List*
+              - iam:PassRole
+            Resource: "*"
+
+          - Sid: AmazonQ
+            Effect: Allow
+            Action: qbusiness:QueryAssistant
+            Resource: "*"
+
+          - Sid: CloudFormationAccess
+            Effect: Allow
+            Action: cloudformation:*
+            Resource: "*"
+
+  NetworkPlatformRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: NetworkPlatformRole
+      Description: Role for operating and maintaining network automation platforms (e.g., Ansible, ECS, pipelines)
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowPlatformEngineers
+            Effect: Allow
+            Principal:
+              AWS: "*"
+            Action: sts:AssumeRole
+            Condition:
+              Bool:
+                aws:MultiFactorAuthPresent: true
+      PermissionsBoundary: !Ref NetworkPlatformBoundary
+      ManagedPolicyArns:
+        - !Ref NetworkPlatformPolicy
+      Tags:
+        - Key: Purpose
+          Value: NetworkPlatform
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Role
+          Value: network-platform
+        - Key: Team
+          Value: Network
+
+Outputs:
+
+  NetworkPlatformRoleArn:
+    Value: !GetAtt NetworkPlatformRole.Arn
+    Description: ARN of the IAM role for network platform operations
+
+  NetworkPlatformPolicyArn:
+    Value: !Ref NetworkPlatformPolicy
+    Description: ARN of the IAM policy used by the role
+
+  NetworkPlatformBoundaryArn:
+    Value: !Ref NetworkPlatformBoundary
+    Description: ARN of the IAM permissions boundary attached to the role
