@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+
+ROLE_NAME="${1}";
+
+PREFIX_NAME="$( cut -d'-' -f1-2 <<< "${ROLE_NAME}" )";
+ACCOUNT_NAME="${ROLE_NAME%%--*}-account";
+PROFILE_NAME="${PREFIX_NAME}-${ROLE_NAME##*--}-role";
+
+REGION="us-east-1";
+
+profile_policies="${ACCOUNT_NAME}/${ROLE_NAME%%--*}--${ROLE_NAME##*--}.policies";
+
+attached_policies="${ACCOUNT_NAME}/${PROFILE_NAME}--attached-policies.json";
+
+unique_sets="unique-sets";
+unified_policies="${ACCOUNT_NAME}/${PROFILE_NAME}--${unique_sets}.json";
+
+tmp_dir=$( mktemp -d );
+policies=();
+
+rm -rf ${ACCOUNT_NAME} && mkdir -p ${ACCOUNT_NAME};
+
+report_folder="reports";
+rm -rf ${report_folder} && mkdir ${report_folder};
+
+# Get all attached policy ARNs
+policy_arns=$(
+  aws iam list-attached-role-policies \
+      --role-name "${PROFILE_NAME}" \
+      --profile "${PROFILE_NAME}" \
+      --query 'AttachedPolicies[*].PolicyArn' \
+      --output text
+);
+# echo -e;
+
+echo -e "\nAccount: ${ACCOUNT_NAME}\nProfile: ${PROFILE_NAME}\n" | tee "${profile_policies}";
+for each in ${policy_arns[@]}; do
+  echo -e "Policy: ${each}" | tee -a "${profile_policies}";
+done;
+
+## Fetch each policy document and build array
+for arn in ${policy_arns[@]}; do
+  policy_name=$( basename "${arn}" );
+  version_id=$(
+    aws iam get-policy \
+        --policy-arn "${arn}" \
+        --profile "${PROFILE_NAME}" \
+        --query 'Policy.DefaultVersionId' \
+        --output text
+  );
+  #echo -e "Policy-ID: ${version_id}";
+  policy=$(
+    aws iam get-policy-version \
+        --policy-arn "${arn}" \
+        --version-id "${version_id}" \
+        --profile "${PROFILE_NAME}" \
+        --output json
+  );
+  echo -e "\nPolicy [ ${policy_name} ]: ${policy}";
+  ## Enrich with PolicyName and ARN for context
+  enriched=$(
+    jq --arg name "${policy_name}" \
+       --arg arn "$arn" \
+       '{
+            PolicyName: $name,
+            PolicyArn: $arn
+        } + .PolicyVersion.Document' \
+    <<< "${policy}"
+  );
+  policies+=( "${enriched}" );
+done;
+
+## Merge and sort by PolicyName
+jq -s 'sort_by( .PolicyName )' <<< "${policies[@]}" \
+> "${attached_policies}";
+
+jq '
+  def extract_actions(effect):
+    map( .Statement ) | flatten |
+    map( select( .Effect == effect ) ) |
+    map(
+      if ( .Action | type ) == "array" then .Action[] else .Action end
+    ) | unique | sort;
+    {
+      Allow: extract_actions( "Allow" ),
+      Deny: extract_actions( "Deny" )
+    }
+' "${attached_policies}" \
+> "${unified_policies}";
+
+declare -a policies=($(
+  find . -type f -name "*--${unique_sets}.json" | \
+  sed -e 's|^\.\/||g'
+));
+
+for each in ${policies[@]}; do echo -e "Policy: ${each}"; done;
+
+## Note: This works but everything is all bundled up into single sets (Allow/Deny)
+jq -s '
+{
+  Allow: map( .Allow[] ) | unique | sort,
+  Deny:  map( .Deny[]  ) | unique | sort
+}
+' "${policies[@]}" \
+> ${report_folder}/unified-policies.json;
+
+jq '
+  def group_services( list ):
+    list
+    | map( split( ":" ) )
+    | group_by( .[0] )
+    | map( { ( .[0][0] ): map( .[1] ) } )
+    | add;
+  .Allow = group_services( .Allow ) |
+  .Deny  = group_services( .Deny )
+' ${report_folder}/unified-policies.json \
+> ${report_folder}/services-policies.json;
+
+rm ${report_folder}/unified-policies.json;
+
+find . -type f -name '*.policies' | \
+xargs -I {} cat {} | \
+tee -a ${report_folder}/profile-policies.list;
+
+cat ${report_folder}/profile-policies.list | \
+grep -E "^Policy: arn:aws:iam::aws:policy/.*" | \
+awk -F':' '{print $7}' | \
+sort | \
+uniq - \
+> ${report_folder}/amazon-policies.list;
+
+cat ${report_folder}/profile-policies.list | \
+grep -E "^(Policy: arn:aws:iam::)([0-9]*)(:policy/)(.*)" | \
+awk -F':' '{print $7}' | \
+sort | \
+uniq - \
+> ${report_folder}/custom-policies.list;
+
+rm ${report_folder}/profile-policies.list;
