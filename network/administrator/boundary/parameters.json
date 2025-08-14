@@ -1,0 +1,10 @@
+[
+    {
+        "ParameterKey": "PermissionsBoundaryName",
+        "ParameterValue": "network-administrator-permissions-boundary"
+    },
+    {
+        "ParameterKey": "CustomPolicyPath",
+        "ParameterValue": "/managed/network/"
+    }
+]

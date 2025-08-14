@@ -1,0 +1,38 @@
+[
+    {
+        "ParameterKey": "AccountNumber",
+        "ParameterValue": ""
+    },
+    {
+        "ParameterKey": "SamlProviderName",
+        "ParameterValue": ""
+    },
+    {
+        "ParameterKey": "CustomPolicyPath",
+        "ParameterValue": "/managed/network/"
+    },
+    {
+        "ParameterKey": "PrefixProfileName",
+        "ParameterValue": "aws"
+    },
+    {
+        "ParameterKey": "EnvironmentName",
+        "ParameterValue": "proto"
+    },
+    {
+        "ParameterKey": "CustomRoleName",
+        "ParameterValue": "network-administrator"
+    },
+    {
+        "ParameterKey": "ManagedPolicyName",
+        "ParameterValue": "network-administrator"
+    },
+    {
+        "ParameterKey": "PermissionsBoundaryPolicyName",
+        "ParameterValue": "network-administrator-permissions-boundary"
+    },
+    {
+        "ParameterKey": "CustomRolePath",
+        "ParameterValue": "/role/network/"
+    }
+]

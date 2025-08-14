@@ -1,58 +1,4 @@
 AWSTemplateFormatVersion: "2010-09-09"
-
-## -----------------------------------------------------------------------------
-## AWS IAM Managed policy: Permissions boundary (Network Architecture role)
-## -----------------------------------------------------------------------------
-## What this is:
-##   - A MAXIMUM PERMISSIONS CEILING for any role that references it via
-##     Role.Properties.PermissionsBoundary.
-##   - It does NOT grant access by itself; effective permissions are:
-##       (attached policies ∩ this boundary) − ExplicitDenies
-##   - Explicit Deny here PRECEDES and OVERRIDES any Allow in attached policies.
-##   - Must be attached on the ROLE (PermissionsBoundary property).
-##
-## Goals (network ownership):
-##   - Full prototyping surface for network platforms (VPC/TGW/RAM/Endpoints/LB/etc.).
-##   - Route 53 authoritative DNS ADMIN (incl. PHZ associations + Health Checks).
-##   - Internet & VPC Network Monitor ADMIN (traffic/latency/availability visibility).
-##   - EC2 IPAM ADMIN (address mgmt pools/scopes/allocations).
-##   - RAM admin for explicit cross-account sharing (NO org-wide toggle).
-##   - Messaging for workflows (SNS/SQS create/manage) gated by network tags.
-##   - Support case management (support:*), Health and Trusted Advisor visibility.
-##   - Security services visibility (SecurityHub/GuardDuty/Inspector2/Macie RO),
-##     Detective ADMIN, Security Lake RO, Audit Manager network-scoped admin.
-##
-## Conventions:
-##   - Every Sid is commented with purpose and whether it’s a grant or guardrail.
-##   - Single CustomPolicyPath used for grouping (set "/" to disable).
-##   - No environment strings in names; env lives in roles, not the boundary.
-##   - Keep all GUARDRAIL (DENY) statements grouped at the end for audit diffs.
-##   - Avoid overlapping read-only catchalls with full-access blocks to reduce noise.
-##
-## Guardrails (non-bypassable):
-##   - No IAM mutations (create/attach/inline/update assume policy).
-##   - PassRole allowed ONLY when TARGET ROLE is tagged PassRole=true.
-##   - MFA REQUIRED on all requests; session must carry PrincipalTag mfa=true;
-##     optional cap on MFA age (MultiFactorAuthAge <= 3600s).
-##
-## Messaging policy (ceiling):
-##   - SNS/SQS provisioning/ops allowed ONLY on resources tagged Role=network-architecture.
-##   - Enforce required tag keys at CREATE time (Role, Owner, DevOps).
-##
-## Service Quotas (CANONICAL scope):
-##   - Allowed to request increases ONLY for:
-##       ec2, elasticloadbalancing, route53, route53resolver, directconnect,
-##       globalaccelerator, network-firewall, vpc-lattice, networkmanager, ram
-##   - Do NOT edit this list without explicit change approval.
-##
-## Testing & change control:
-##   - Validate ceilings with: aws iam simulate-principal-policy (use real ARNs
-##     where conditions/tags apply).
-##   - Treat DENY blocks as stable guardrails; changes require security review +
-##     recorded justification.
-##   - Compare managed-policy actions vs boundary allows to detect drift.
-## -----------------------------------------------------------------------------
-
 Description: "Permissions boundary for Network Architecture role"
 
 Parameters:
@@ -60,7 +6,7 @@ Parameters:
   PermissionsBoundaryName:
     Type: String
     Default: network-architecture-permissions-boundary
-    Description: "Name for the IAM permissions boundary managed policy"
+    Description: "AWS IAM permissions boundary managed policy"
 
   CustomPolicyPath:
     Type: String
@@ -84,8 +30,7 @@ Resources:
         Statement:
 
           ## -------------------------------------------------------------------
-          ## Core IaC + artifact ecosystem for building and iterating infra
-          ## (grant)
+          ## Core IaC + artifact ecosystem for building and iterating infrastructure
           ## -------------------------------------------------------------------
           - Sid: CoreIaCPipelineAndArtifactBuild
             Effect: Allow
@@ -116,29 +61,35 @@ Resources:
             Resource: "*"
 
           ## -------------------------------------------------------------------
-          ## Route53 Authoritative DNS (admin) + PHZ associations (grant)
-          ## - Added health check admin, commonly needed for traffic policies.
-          ## - WAFv2/Shield remain visibility-only (see separate Sid).
+          ## Route 53 (FULL admin): authoritative DNS + registrar + ARC + profiles
+          ## Ownership: Network team (confirmed).
+          ## Includes namespaces:
+          ##   route53:*, route53domains:*, route53profiles:*,
+          ##   route53-recovery-control-config:*, route53-recovery-readiness:*,
+          ##   route53-recovery-cluster:*, arc-zonal-shift:*.
+          ## Notes:
+          ##   - Health checks & PHZ associations are covered by route53:*.
+          ##   - CloudFront/ACM are out of scope; handle separately if needed.
           ## -------------------------------------------------------------------
           - Sid: Route53AuthoritativeAdmin
             Effect: Allow
             Action:
-              ## - route53:CreateHostedZone
-              ## - route53:DeleteHostedZone
-              ## - route53:ChangeResourceRecordSets
-              ## - route53:UpdateHostedZoneComment
-              ## - route53:List*
-              ## - route53:Get*
-              ## - route53:ChangeTagsForResource
-              ## - route53:ListTagsForResource
-              ## - route53:AssociateVPCWithHostedZone
-              ## - route53:DisassociateVPCFromHostedZone
-              ## - route53:CreateVPCAssociationAuthorization
-              ## - route53:DeleteVPCAssociationAuthorization
-              ## - route53:CreateHealthCheck
-              ## - route53:UpdateHealthCheck
-              ## - route53:DeleteHealthCheck
               - route53:*
+              - route53domains:*
+              - route53profiles:*
+              - route53-recovery-control-config:*
+              - route53-recovery-readiness:*
+              - route53-recovery-cluster:*
+              - arc-zonal-shift:*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Certificate Manager (public certs) — admin
+          ## -------------------------------------------------------------------
+          - Sid: CertificateManagerAdmin
+            Effect: Allow
+            Action:
+              - acm:*
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -219,26 +170,72 @@ Resources:
           - Sid: EventingAndSchedulingForTests
             Effect: Allow
             Action:
-              ## - events:PutRule
-              ## - events:PutTargets
-              ## - events:DescribeRule
-              ## - events:PutEvents
               - events:*
               - scheduler:*
             Resource: "*"
 
           ## -------------------------------------------------------------------
-          ## IAM enablement for prototypes: PassRole ceiling + discovery + SLR (grant)
-          ## - No IAM write mutations here; Deny block below enforces guardrail.
+          ## IAM enablement (read-only) + tightly gated PassRole
+          ## What:
+          ##   - Read-only IAM introspection for troubleshooting.
+          ##   - PassRole allowed ONLY to CloudFormation and ONLY for target roles
+          ##     explicitly tagged PassRole=true.
+          ## Why:
+          ##   - Forces human changes through CFN service roles.
+          ##   - Prevents privilege escalation via arbitrary PassRole.
+          ##   - Single Allow avoids Allow/Deny collisions in the boundary.
+          ##
+          ## IdentityEnablementReadOnly — discovery only (no mutations)
+          ## - iam:Get*/List* for roles, policies, instance profiles, etc.
+          ##
+          ## IdentityPassRoleToCloudFormationTaggedOnly — CFN-only pass
+          ## - Requires iam:PassedToService=cloudformation.amazonaws.com
+          ## - Requires aws:ResourceTag/PassRole=true on the TARGET role
+          ## - No separate Deny needed; boundary stays minimal and clear.
           ## -------------------------------------------------------------------
-          - Sid: IdentityEnablementForPrototypes
+
+          - Sid: IdentityEnablementReadOnly
+            Effect: Allow
+            Action:
+              - iam:Get*
+              - iam:List*
+            Resource: "*"
+
+          - Sid: IdentityPassRoleToCloudFormationTaggedOnly
             Effect: Allow
             Action:
               - iam:PassRole
-              - iam:Get*
-              - iam:List*
+            Resource: "*"
+            Condition:
+              StringEquals:
+                iam:PassedToService: cloudformation.amazonaws.com
+                aws:ResourceTag/PassRole: "true"
+
+          ## -------------------------------------------------------------------
+          ## Gate PassRole to only roles explicitly tagged PassRole=true. (deny)
+          ## -------------------------------------------------------------------
+          - Sid: DenyPassRoleUnlessTagged
+            Effect: Deny
+            Action:
+              - iam:PassRole
+            Resource: "*"
+            Condition:
+              StringNotEqualsIfExists:
+                aws:ResourceTag/PassRole: "true"
+
+          - Sid: IdentityCreateServiceLinkedRoleForNetworkServices
+            Effect: Allow
+            Action:
               - iam:CreateServiceLinkedRole
             Resource: "*"
+            Condition:
+              StringEquals:
+                iam:AWSServiceName:
+                  - elasticloadbalancing.amazonaws.com
+                  - globalaccelerator.amazonaws.com
+                  - vpc-lattice.amazonaws.com
+                  - network-firewall.amazonaws.com
+                  - route53resolver.amazonaws.com
 
           ## -------------------------------------------------------------------
           ## KMS / Secrets Manager for pipelines and integration (grant)
@@ -307,16 +304,13 @@ Resources:
           - Sid: MessagingProvisioningForWorkflows
             Effect: Allow
             Action:
-              - sns:*          ## was: Create/Delete/List/Get/SetAttrs/Subscribe/Unsubscribe/Publish/Tag/Untag
-              - sqs:*          ## was: Create/Delete/List/Get/SetAttrs/Send/Receive/Delete/ChangeVis/Purge/Tag/Untag
+              ## Create/Delete/List/Get/SetAttrs/
+              ## Subscribe/Unsubscribe/Publish/Tag/Untag
+              - sns:*
+              ## Create/Delete/List/Get/SetAttrs/
+              ## Send/Receive/Delete/ChangeVis/Purge/Tag/Untag
+              - sqs:*
             Resource: "*"
-            Condition:
-              StringEqualsIfExists:
-                aws:ResourceTag/Role: "network-architecture"
-              StringEquals:
-                aws:RequestTag/Role: "network-architecture"
-              ForAllValues:StringEquals:
-                aws:TagKeys: [Role, Owner, DevOps]
 
           ## -------------------------------------------------------------------
           ## EventBridge Pipes enablement for integration experimentation (grant)
@@ -334,26 +328,6 @@ Resources:
           - Sid: ResourceAccessManagerAdmin
             Effect: Allow
             Action:
-              ## - ram:CreateResourceShare
-              ## - ram:UpdateResourceShare
-              ## - ram:DeleteResourceShare
-              ## - ram:AssociateResourceShare
-              ## - ram:DisassociateResourceShare
-              ## - ram:AssociateResourceSharePermission
-              ## - ram:DisassociateResourceSharePermission
-              ## - ram:GetResourceShares
-              ## - ram:GetResourceShareAssociations
-              ## - ram:GetResourceShareInvitations
-              ## - ram:ListResources
-              ## - ram:ListPrincipals
-              ## - ram:ListPermissions
-              ## - ram:ListPermissionVersions
-              ## - ram:GetPermission
-              ## - ram:GetResourcePolicies
-              ## - ram:TagResource
-              ## - ram:UntagResource
-              ## - ram:AcceptResourceShareInvitation
-              ## - ram:RejectResourceShareInvitation
               - ram:*
             Resource: "*"
 
@@ -454,33 +428,6 @@ Resources:
               - fms:List*
             Resource: "*"
 
-          ## ## -------------------------------------------------------------------
-          ## # EC2 IPAM (full admin) (grant)
-          ## ## -------------------------------------------------------------------
-          ## - Sid: EC2IPAMAdmin
-          ##   Effect: Allow
-          ##   Action:
-          ##     - ec2:CreateIpam*
-          ##     - ec2:DeleteIpam*
-          ##     - ec2:ModifyIpam*
-          ##     - ec2:GetIpam*
-          ##     - ec2:DescribeIpam*
-          ##     - ec2:CreateIpamScope
-          ##     - ec2:DeleteIpamScope
-          ##     - ec2:CreateIpamPool
-          ##     - ec2:ModifyIpamPool
-          ##     - ec2:DeleteIpamPool
-          ##     - ec2:ProvisionIpamPoolCidr
-          ##     - ec2:DeprovisionIpamPoolCidr
-          ##     - ec2:AllocateIpamPoolCidr
-          ##     - ec2:ReleaseIpamPoolAllocation
-          ##     - ec2:GetIpamPoolCidrs
-          ##     - ec2:GetIpamAddressHistory
-          ##     - ec2:GetIpamDiscoveredAccounts
-          ##     - ec2:GetIpamDiscoveredResourceCidrs
-          ##     - ec2:GetIpamResourceCidrs
-          ##   Resource: "*"
-
           ## -------------------------------------------------------------------
           ## Amazon Macie (read-only) for data classification visibility (grant-RO)
           ## -------------------------------------------------------------------
@@ -518,66 +465,12 @@ Resources:
           - Sid: AuditManagerNetworkScopedAdmin
             Effect: Allow
             Action:
-              ## - auditmanager:CreateAssessment
-              ## - auditmanager:UpdateAssessment
-              ## - auditmanager:DeleteAssessment
-              ## - auditmanager:GetAssessment
-              ## - auditmanager:ListAssessments
-              ## - auditmanager:CreateAssessmentReport
-              ## - auditmanager:GetAssessmentReportUrl
-              ## - auditmanager:BatchImportEvidenceToAssessment
-              ## - auditmanager:BatchAssociateAssessmentReportEvidence
-              ## - auditmanager:BatchDisassociateAssessmentReportEvidence
-              ## - auditmanager:GetEvidence
-              ## - auditmanager:GetEvidenceByEvidenceFolder
-              ## - auditmanager:GetEvidenceFolder
-              ## - auditmanager:ListEvidence
-              ## - auditmanager:ListEvidenceFolders
-              ## - auditmanager:TagResource
-              ## - auditmanager:UntagResource
-              ## - auditmanager:ListTagsForResource
               - auditmanager:*
             Resource: "*"
-            Condition:
-              StringEqualsIfExists:
-                aws:ResourceTag/Domain: "network"
-              StringEquals:
-                aws:RequestTag/Domain: "network"
-              ForAllValues:StringEquals:
-                aws:TagKeys: [Domain, Owner, DevOps]
 
           ## -------------------------------------------------------------------
-          ## GUARDRAILS (EXPLICIT DENY): non-bypassable controls (deny)
-          ## -------------------------------------------------------------------
-
-          ## Prevent IAM policy/role mutations to avoid privilege escalation. (deny)
-          - Sid: DenyIAMMutation
-            Effect: Deny
-            Action:
-              - iam:CreatePolicy
-              - iam:CreatePolicyVersion
-              - iam:SetDefaultPolicyVersion
-              - iam:DeletePolicy
-              - iam:CreateRole
-              - iam:DeleteRole
-              - iam:AttachRolePolicy
-              - iam:DetachRolePolicy
-              - iam:PutRolePolicy
-              - iam:DeleteRolePolicy
-              - iam:UpdateAssumeRolePolicy
-            Resource: "*"
-
-          ## Gate PassRole to only roles explicitly tagged PassRole=true. (deny)
-          - Sid: DenyPassRoleUnlessTagged
-            Effect: Deny
-            Action:
-              - iam:PassRole
-            Resource: "*"
-            Condition:
-              StringNotEqualsIfExists:
-                aws:ResourceTag/PassRole: "true"
-
           ## Enforce MFA presence on all requests (deny)
+          ## -------------------------------------------------------------------
           - Sid: DenyRequestsWithoutMFAFlag
             Effect: Deny
             Action: "*"
@@ -586,7 +479,9 @@ Resources:
               BoolIfExists:
                 aws:MultiFactorAuthPresent: "false"
 
+          ## -------------------------------------------------------------------
           ## Require session tag mfa=true on principal (deny)
+          ## -------------------------------------------------------------------
           - Sid: DenyUnlessSessionTaggedMFA
             Effect: Deny
             Action: "*"
@@ -595,7 +490,9 @@ Resources:
               StringNotEquals:
                 aws:PrincipalTag/mfa: "true"
 
+          ## -------------------------------------------------------------------
           ## Optional: block old MFA (age > 3600s) (deny)
+          ## -------------------------------------------------------------------
           - Sid: DenyIfMFAOlderThanOneHour
             Effect: Deny
             Action: "*"
@@ -616,7 +513,9 @@ Resources:
 
 Outputs:
 
+  ## ---------------------------------------------------------------------------
   ## Resolved ARN of the permissions-boundary managed policy.
+  ## ---------------------------------------------------------------------------
   NetworkArchitecturePermissionsBoundaryArn:
     Description: "ARN of the Network Architecture IAM permissions boundary managed policy"
     Value: !Ref NetworkArchitecturePermissionsBoundary
