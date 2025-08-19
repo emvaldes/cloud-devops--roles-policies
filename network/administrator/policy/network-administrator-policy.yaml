@@ -373,7 +373,7 @@ Resources:
             Resource:
               - arn:aws:ssm:*:*:document/network-*  ## only your network-* runbooks
             Condition:
-              Null:
+              "Null":
                 ssm:AutomationAssumeRole: "true"    ## require NO AutomationAssumeRole (runs with caller context)
 
           ## -------------------------------------------------------------------

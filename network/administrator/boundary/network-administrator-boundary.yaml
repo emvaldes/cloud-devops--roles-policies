@@ -15,17 +15,18 @@ Parameters:
     Description: "IAM path prefix for policies (use / to disable)"
 
   ApprovedSsmInstanceProfiles:
-    Type: List<String>
-    Default:
-      - arn:aws:iam::*:instance-profile/network-ec2-ssm-*    ## primary approved profile family
-      - arn:aws:iam::*:instance-profile/network-eks-ssm-*    ## (example) EKS nodes with SSM
-      - arn:aws:iam::*:instance-profile/network-batch-ssm-*  ## (example) Batch/ASG with SSM
+    Type: CommaDelimitedList
+    Default: "arn:aws:iam::*:instance-profile/network-ec2-ssm-*,arn:aws:iam::*:instance-profile/network-eks-ssm-*,arn:aws:iam::*:instance-profile/network-batch-ssm-*"
     Description: "Approved SSM-enabled instance profile ARNs/patterns"
 
   DnssecKmsKeyArns:
-    Type: List<String>
-    Default: []
+    Type: String
+    Default: ""
     Description: "KMS key ARNs dedicated to Route53 DNSSEC (Administrator-admin scopes)"
+    AllowedPattern: '^$|^arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/[A-Fa-f0-9-]+(,arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/[A-Fa-f0-9-]+)*$'
+
+Conditions:
+  HasDnssecKmsKeys: !Not [ !Equals [ !Ref DnssecKmsKeyArns, "" ] ]
 
 Resources:
 
@@ -140,12 +141,18 @@ Resources:
                   - route53resolver.amazonaws.com
                   - vpc-lattice.amazonaws.com
 
-          ## -------------------------------------------------------------------
+          ## -------------------------------````--------------------------------
           ## KMS administration blocked (key/alias/grant/policy)
           ## -------------------------------------------------------------------
           - Sid: DenyKmsKeyAdministration
             Effect: Deny
-            NotResource: !Ref DnssecKmsKeyArns   ## EXCEPT these DNSSEC keys
+            ## Toggle Resource/NotResource based on whether DnssecKmsKeyArns is set
+            Resource: !If [ HasDnssecKmsKeys, !Ref "AWS::NoValue", "*" ]
+            ## NotResource: !Ref DnssecKmsKeyArns  ## EXCEPT these DNSSEC keys
+            NotResource: !If
+              - HasDnssecKmsKeys
+              - !Split [ ",", !Ref DnssecKmsKeyArns ]
+              - !Ref "AWS::NoValue"
             Action:
               - kms:CancelKeyDeletion    ## prevent canceling scheduled key deletion once initiated
               - kms:Create*              ## prevent creation of KMS resources (keys, replicas, etc.)
@@ -375,7 +382,7 @@ Resources:
               - ssm:SendCommand
             Resource: "*"
             Condition:
-              Null:
+              "Null":
                 ssm:resourceTag/NetworkManaged: "true"  ## key absent -> deny
 
           ## -------------------------------------------------------------------
@@ -400,7 +407,7 @@ Resources:
               - ssm:StartAutomationExecution
             Resource: "*"
             Condition:
-              Null:
+              "Null":
                 ssm:AutomationAssumeRole: "false"  ## key present (not null) -> deny
 
           ## -------------------------------------------------------------------
@@ -411,7 +418,7 @@ Resources:
             Action: ec2:RunInstances
             Resource: "*"
             Condition:
-              Null:
+              "Null":
                 ec2:InstanceProfile: "true"  ## deny when no instance profile is provided
 
           ## -------------------------------------------------------------------
