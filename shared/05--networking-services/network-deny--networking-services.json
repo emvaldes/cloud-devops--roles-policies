@@ -1,0 +1,4 @@
+[
+  { "ParameterKey": "ManagedPolicyName", "ParameterValue": "network-deny--networking-services" },
+  { "ParameterKey": "CustomPolicyPath",  "ParameterValue": "/managed/network/" }
+]

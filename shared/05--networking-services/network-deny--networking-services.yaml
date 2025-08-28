@@ -1,0 +1,93 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Common Deny Policy — Networking Services (Direct Connect, Service Quotas, Route53 Domains)"
+
+Parameters:
+
+  ManagedPolicyName:
+    Type: String
+    Default: network-deny--networking-services
+    Description: "IAM managed policy name for Networking Services deny guardrails"
+
+  CustomPolicyPath:
+    Type: String
+    Default: "/managed/network/"
+    AllowedPattern: "^/([A-Za-z0-9+=,.@_-]+/)*$"
+    Description: "IAM path prefix for policies (use / to disable)"
+
+Resources:
+
+  NetworkDenyNetworkingServicesPolicy:
+
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+
+      ManagedPolicyName: !Ref ManagedPolicyName
+      Path: !Ref CustomPolicyPath
+      Description: "Deny guardrails for Networking Services (Direct Connect, Service Quotas, Route53 Domains)"
+
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+
+## -------------------------------------------------------------------------- ##
+## 5 - Networking Services
+
+          ## -------------------------------------------------------------------
+          ## Service Quotas: prevent Direct Connect quota increases (ticketed process only)
+          ## -------------------------------------------------------------------
+          - Sid: DenyServiceQuotasDirectConnectIncrease
+            Effect: Deny
+            Action:
+              - servicequotas:RequestServiceQuotaIncrease  ## block quota increase requests for Direct Connect (must go through ticketed path)
+            Resource: "*"
+            Condition:
+              StringEquals:
+                servicequotas:service: directconnect       ## scope only to Direct Connect quotas
+
+          ## -------------------------------------------------------------------
+          ## Direct Connect administration blocked
+          ## -------------------------------------------------------------------
+          - Sid: DenyDirectConnectAdministration
+            Effect: Deny
+            Action:
+              - directconnect:Accept*        ## block acceptance of hosted connections/VIFs/associations
+              - directconnect:Allocate*      ## block allocation of new hosted connections or VIFs
+              - directconnect:Associate*     ## block associating DXGWs/VIFs outside governance
+              - directconnect:Attach*        ## block attaching DX resources (LAGs/gateways/etc.)
+              - directconnect:Confirm*       ## block confirmations of DX connections/VIFs
+              - directconnect:Create*        ## block creation of DX resources (connections/LAGs/GWs/VIFs)
+              - directconnect:Delete*        ## block deletion of DX resources (connectivity risk)
+              - directconnect:Detach*        ## block detaching DX resources (LAGs/gateways/etc.)
+              - directconnect:Disassociate*  ## block disassociating DXGWs/VIFs once established
+              - directconnect:Update*        ## block modifying DX resource configs (BGP, VLAN, MTU, etc.)
+              - directconnect:TagResource    ## block tag additions on DX resources
+              - directconnect:UntagResource  ## block tag removals on DX resources
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Route53 Domains (registrar) admin off (protect org domain ownership)
+          ## -------------------------------------------------------------------
+          - Sid: DenyRoute53DomainsRegistrarAdministration
+            Effect: Deny
+            Action:
+              - route53domains:AssociateDelegationSignerToDomain       ## block adding DS records
+              - route53domains:DeleteDomain                            ## block destructive domain deletions
+              - route53domains:DisableDomainAutoRenew                  ## block disabling auto-renew
+              - route53domains:DisassociateDelegationSignerFromDomain  ## block removing DS records
+              - route53domains:EnableDomainAutoRenew                   ## block enabling auto-renew (governed centrally)
+              - route53domains:RegisterDomain                          ## block new domain registrations
+              - route53domains:TransferDomain                          ## block outbound transfers
+              - route53domains:TransferDomainToAnotherAwsAccount       ## block pushing domains to other accounts
+              - route53domains:UpdateDomainContact                     ## block editing registrant/owner contact details
+              - route53domains:UpdateDomainContactPrivacy              ## block flipping WHOIS privacy
+              - route53domains:UpdateDomainNameservers                 ## block swapping nameservers
+              - route53domains:UpdateTagsForDomain                     ## block domain-level tag changes
+            Resource: "*"
+
+## -------------------------------------------------------------------------- ##
+
+Outputs:
+
+  NetworkDenyNetworkingServicesPolicyArn:
+    Description: "ARN of the Networking Services deny IAM managed policy"
+    Value: !Ref NetworkDenyNetworkingServicesPolicy

@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Common Deny Policy — Observability & Telemetry (Config, CloudTrail, CloudWatch, Logs, X-Ray, OAM, S3 PAB)"
+
+Parameters:
+
+  ManagedPolicyName:
+    Type: String
+    Default: network-deny--observability-telemetry
+    Description: "IAM managed policy name for Observability/Telemetry deny guardrails"
+
+  CustomPolicyPath:
+    Type: String
+    Default: "/managed/network/"
+    AllowedPattern: "^/([A-Za-z0-9+=,.@_-]+/)*$"
+    Description: "IAM path prefix for policies (use / to disable)"
+
+Resources:
+
+  NetworkDenyObservabilityTelemetryPolicy:
+
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+
+      ManagedPolicyName: !Ref ManagedPolicyName
+      Path: !Ref CustomPolicyPath
+      Description: "Deny guardrails for Observability & Telemetry services (Config, CloudTrail, CloudWatch, Logs, X-Ray, OAM, S3 PAB)"
+
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+
+## -------------------------------------------------------------------------- ##
+## 3 - Observability & Telemetry
+
+          ## -------------------------------------------------------------------
+          ## AWS Config tamper prevention
+          ## -------------------------------------------------------------------
+          - Sid: DenyConfigTamper
+            Effect: Deny
+            Action:
+              - config:Delete*                          ## prevent deletion of AWS Config resources/history (broad safety net)
+              - config:DeleteConfigRule                 ## prevent removal of individual Config rules
+              - config:DeleteRemediationConfigurations  ## prevent deleting remediation configs
+              - config:PutConfigRule                    ## prevent creating/updating Config rules outside governance
+              - config:PutConfigurationRecorder         ## prevent enabling/updating the configuration recorder
+              - config:PutDeliveryChannel               ## prevent changing delivery channel (S3/KMS/SNS destinations)
+              - config:PutRemediationConfigurations     ## prevent creating/updating remediation configs outside governance
+              - config:StopConfigurationRecorder        ## prevent stopping the recorder (keeps inventory active)
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CloudTrail tamper prevention
+          ## -------------------------------------------------------------------
+          - Sid: DenyCloudTrailTamper
+            Effect: Deny
+            Action:
+              - cloudtrail:DeleteTrail        ## prevent deletion of trails
+              - cloudtrail:PutEventSelectors  ## prevent altering event selectors (filtering scope)
+              - cloudtrail:StopLogging        ## prevent disabling logging
+              - cloudtrail:UpdateTrail        ## prevent mutating trail config (destinations/KMS/etc.)
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CloudTrail Insights toggle off
+          ## -------------------------------------------------------------------
+          - Sid: DenyCloudTrailInsightsToggle
+            Effect: Deny
+            Action:
+              - cloudtrail:PutInsightSelectors  ## prevent enabling/disabling Insights
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CloudWatch Logs tamper prevention
+          ## -------------------------------------------------------------------
+          - Sid: DenyLogsTamper
+            Effect: Deny
+            Action:
+              - logs:AssociateKmsKey        ## prevent arbitrary KMS key associations
+              - logs:Delete*                ## prevent deletion of log groups/streams/exports
+              - logs:DisassociateKmsKey     ## prevent removing KMS encryption
+              - logs:PutResourcePolicy      ## prevent altering resource policies (cross-account exposure)
+              - logs:PutRetentionPolicy     ## block retention changes (governed centrally)
+              - logs:PutSubscriptionFilter  ## prevent creating cross-account/subscription exfil paths
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CloudWatch metrics/alarms tamper prevention
+          ## -------------------------------------------------------------------
+          - Sid: DenyCloudWatchAlarmTamper
+            Effect: Deny
+            Action:
+              - cloudwatch:DeleteAlarms         ## prevent deleting alarms
+              - cloudwatch:DisableAlarmActions  ## prevent disabling alarm actions
+              - cloudwatch:SetAlarmState        ## prevent forcing manual alarm state
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## X-Ray configuration tamper prevention
+          ## -------------------------------------------------------------------
+          - Sid: DenyXRayTamper
+            Effect: Deny
+            Action:
+              - xray:Delete*  ## prevent deletion of X-Ray groups/rules/config
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Keep account-level PAB enforced
+          ## -------------------------------------------------------------------
+          - Sid: DenyS3AccountPublicAccessBlockDelete
+            Effect: Deny
+            Action:
+              - s3:DeleteAccountPublicAccessBlock  ## prevent removal of the account-wide S3 PAB
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## OAM sink admin blocked
+          ## -------------------------------------------------------------------
+          - Sid: DenyOamSinkAdministration
+            Effect: Deny
+            Action:
+              - oam:CreateSink     ## prevent creating cross-account telemetry sinks
+              - oam:DeleteSink     ## prevent deleting sinks and breaking pipelines
+              - oam:PutSinkPolicy  ## prevent modifying sink resource policies
+              - oam:TagResource    ## prevent adding tags on sinks
+              - oam:UntagResource  ## prevent removing tags on sinks
+            Resource: "*"
+
+## -------------------------------------------------------------------------- ##
+
+Outputs:
+
+  NetworkDenyObservabilityTelemetryPolicyArn:
+    Description: "ARN of the Observability/Telemetry deny IAM managed policy"
+    Value: !Ref NetworkDenyObservabilityTelemetryPolicy

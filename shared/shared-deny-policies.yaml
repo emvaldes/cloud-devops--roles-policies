@@ -1,56 +1,5 @@
-AWSTemplateFormatVersion: "2010-09-09"
-Description: "Permissions boundary (deny-guardrail) for Network Architecture role"
-
-Parameters:
-
-  PermissionsBoundaryName:
-    Type: String
-    Default: network-architecture-permissions-boundary
-    Description: "AWS IAM permissions boundary managed policy"
-
-  CustomPolicyPath:
-    Type: String
-    Default: "/managed/network/"
-    AllowedPattern: "^/([A-Za-z0-9+=,.@_-]+/)*$"
-    Description: "IAM path prefix for policies (use / to disable)"
-
-  ApprovedSsmInstanceProfiles:
-    Type: List<String>
-    Default:
-      - arn:aws:iam::*:instance-profile/network-ec2-ssm-*    ## primary approved profile family
-      - arn:aws:iam::*:instance-profile/network-eks-ssm-*    ## (example) EKS nodes with SSM
-      - arn:aws:iam::*:instance-profile/network-batch-ssm-*  ## (example) Batch/ASG with SSM
-    Description: "Approved SSM-enabled instance profile ARNs/patterns"
-
-  DnssecKmsKeyArns:
-    Type: List<String>
-    Default: []
-    Description: "KMS key ARNs dedicated to Route53 DNSSEC (Architecture-admin scopes)"
-
-Resources:
-
-  NetworkArchitecturePermissionsBoundary:
-
-    Type: AWS::IAM::ManagedPolicy
-    Properties:
-
-      ManagedPolicyName: !Ref PermissionsBoundaryName
-      Path: !Ref CustomPolicyPath
-      Description: "Deny-guardrail boundary: broad allow, targeted explicit denies aligned to your relaxed model"
-
-      PolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-
-# ---------------------------------------------------------------------------- #
-
-          ## -------------------------------------------------------------------
-          ## Ceiling = Allow all, then carve back with explicit denies below
-          ## -------------------------------------------------------------------
-          - Sid: GuardrailAllowAll
-            Effect: Allow
-            Action: "*"
-            Resource: "*"
+## -------------------------------------------------------------------------- ##
+## 1 - Infrastructure
 
           ## -------------------------------------------------------------------
           ## Enforce MFA presence everywhere (services that don’t pass the context use BoolIfExists)
@@ -68,22 +17,22 @@ Resources:
           ## -------------------------------------------------------------------
           - Sid: DenyUnlessSessionTaggedMFA
             Effect: Deny
-            Action: "*"
+            Action: "*"                       ## deny all requests when session missing required tag
             Resource: "*"
             Condition:
               StringNotEquals:
-                aws:PrincipalTag/mfa: "true"
+                aws:PrincipalTag/mfa: "true"  ## require federated/assumed session tag mfa=true
 
           ## -------------------------------------------------------------------
           ## MFA max age 1 hour
           ## -------------------------------------------------------------------
           - Sid: DenyIfMFAOlderThanOneHour
             Effect: Deny
-            Action: "*"
+            Action: "*"                       ## deny all requests when MFA is older than threshold
             Resource: "*"
             Condition:
               NumericGreaterThanIfExists:
-                aws:MultiFactorAuthAge: 3600
+                aws:MultiFactorAuthAge: 3600  ## max 3600s (1h) since last MFA verification
 
           ## -------------------------------------------------------------------
           ## PassRole only when CFN is the target service
@@ -129,23 +78,29 @@ Resources:
           ## -------------------------------------------------------------------
           - Sid: DenyCreateServiceLinkedRoleUnlessNetworkServices
             Effect: Deny
-            Action: iam:CreateServiceLinkedRole
+            Action: iam:CreateServiceLinkedRole         ## block SLR creation by default
             Resource: "*"
             Condition:
-              StringNotEquals:
+              StringNotEquals:                          ## allow only for specific AWS network services
                 iam:AWSServiceName:
-                  - elasticloadbalancing.amazonaws.com
-                  - globalaccelerator.amazonaws.com
-                  - network-firewall.amazonaws.com
-                  - route53resolver.amazonaws.com
-                  - vpc-lattice.amazonaws.com
+                  - elasticloadbalancing.amazonaws.com  ## ELBv2 / NLB / ALB
+                  - globalaccelerator.amazonaws.com     ## AWS Global Accelerator
+                  - network-firewall.amazonaws.com      ## AWS Network Firewall
+                  - route53resolver.amazonaws.com       ## Route53 Resolver
+                  - vpc-lattice.amazonaws.com           ## VPC Lattice
 
           ## -------------------------------------------------------------------
           ## KMS administration blocked (key/alias/grant/policy)
           ## -------------------------------------------------------------------
           - Sid: DenyKmsKeyAdministration
             Effect: Deny
-            NotResource: !Ref DnssecKmsKeyArns   # EXCEPT these DNSSEC keys
+            ## Toggle Resource/NotResource based on whether DnssecKmsKeyArns is set
+            Resource: !If [ HasDnssecKmsKeys, !Ref "AWS::NoValue", "*" ]
+            ## NotResource: !Ref DnssecKmsKeyArns  ## EXCEPT these DNSSEC keys
+            NotResource: !If
+              - HasDnssecKmsKeys
+              - !Split [ ",", !Ref DnssecKmsKeyArns ]
+              - !Ref "AWS::NoValue"
             Action:
               - kms:CancelKeyDeletion    ## prevent canceling scheduled key deletion once initiated
               - kms:Create*              ## prevent creation of KMS resources (keys, replicas, etc.)
@@ -188,15 +143,15 @@ Resources:
           - Sid: DenyKmsDecryptOutsideApprovedServices
             Effect: Deny
             Action:
-              - kms:Decrypt
+              - kms:Decrypt                        ## block decrypt by default
             Resource: "*"
             Condition:
-              StringNotEqualsIfExists:
+              StringNotEqualsIfExists:             ## only allow when request comes from these AWS services
                 kms:ViaService:
-                  - logs.amazonaws.com
-                  - s3.amazonaws.com
-                  - secretsmanager.amazonaws.com
-                  - ssm.amazonaws.com
+                  - logs.amazonaws.com             ## CloudWatch Logs (log group encryption/decryption)
+                  - s3.amazonaws.com               ## S3 (SSE-KMS object encryption/decryption)
+                  - secretsmanager.amazonaws.com   ## Secrets Manager (secret rotation/retrieval)
+                  - ssm.amazonaws.com              ## Systems Manager Parameter Store (SecureString)
 
           ## -------------------------------------------------------------------
           ## Secrets Manager sensitive ops blocked; read/get remains via ceiling
@@ -211,6 +166,31 @@ Resources:
               - secretsmanager:RotateSecret              ## prevent manual rotation initiation
               - secretsmanager:StopReplicationToReplica  ## prevent stopping cross-region replication
             Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## ACM minimal safety (keep account-level + key export off)
+          ## -------------------------------------------------------------------
+          - Sid: DenyAcmAccountAndExportOnly
+            Effect: Deny
+            Action:
+              - acm:ExportCertificate        ## prevent private key exfiltration
+              - acm:PutAccountConfiguration  ## prevent account-wide ACM setting changes
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CFN safety rails: no stack set deletes, no stack policy fiddling, no disabling termination protection
+          ## -------------------------------------------------------------------
+          - Sid: DenyCloudFormationPolicyAndDeletes
+            Effect: Deny
+            Action:
+              - cloudformation:DeleteStackInstances         ## prevent destructive StackSet instance removals
+              - cloudformation:DeleteStackSet               ## prevent deletion of entire StackSets
+              - cloudformation:SetStackPolicy               ## disallow changing stack protection policies
+              - cloudformation:UpdateTerminationProtection  ## prevent toggling termination protection
+            Resource: "*"
+
+## -------------------------------------------------------------------------- ##
+## 2 - Utilities & Support
 
           ## -------------------------------------------------------------------
           ## Prevent CloudShell exfil/infil and credential injection
@@ -229,19 +209,19 @@ Resources:
           - Sid: DenyAmazonQAdministration
             Effect: Deny
             Action:
-              - q:Associate*             ## prevent associating data sources/apps/users to Amazon Q
-              - q:Create*                ## prevent creation of Amazon Q resources
+              - q:Associate*             ## block data source / app / user associations in Amazon Q
+              - q:Create*                ## prevent creation of new Amazon Q resources
               - q:Delete*                ## prevent deletion of Amazon Q resources
-              - q:Disassociate*          ## prevent removing existing associations
-              - q:Put*                   ## prevent configuration/state mutations (Put*)
-              - q:TagResource            ## prevent tag additions on Q resources
-              - q:UntagResource          ## prevent tag removals on Q resources
+              - q:Disassociate*          ## block disassociation of linked resources in Amazon Q
+              - q:Put*                   ## prevent configuration/state changes
+              - q:TagResource            ## prevent tag additions
+              - q:UntagResource          ## prevent tag removals
               - q:Update*                ## prevent updates to Q resources/config
-              - qbusiness:Associate*     ## prevent associations in Amazon Q Business
+              - qbusiness:Associate*     ## block associations in Q Business
               - qbusiness:Create*        ## prevent creation of Q Business resources
               - qbusiness:Delete*        ## prevent deletion of Q Business resources
-              - qbusiness:Disassociate*  ## prevent disassociations in Q Business
-              - qbusiness:Put*           ## prevent configuration/state mutations (Put*) in Q Business
+              - qbusiness:Disassociate*  ## block disassociations in Q Business
+              - qbusiness:Put*           ## prevent configuration/state changes in Q Business
               - qbusiness:TagResource    ## prevent tag additions on Q Business resources
               - qbusiness:UntagResource  ## prevent tag removals on Q Business resources
               - qbusiness:Update*        ## prevent updates to Q Business resources/config
@@ -253,9 +233,34 @@ Resources:
           - Sid: DenyOrgWideRAMSharing
             Effect: Deny
             Action:
-              - ram:DisableSharingWithAwsOrganization  ## prevent turning off org-wide RAM sharing (would break existing shares)
-              - ram:EnableSharingWithAwsOrganization   ## prevent enabling org-wide RAM sharing without governance; require explicit shares instead
+              - ram:DisableSharingWithAwsOrganization  ## prevent disabling org-wide RAM sharing
+              - ram:EnableSharingWithAwsOrganization   ## prevent enabling org-wide RAM sharing without governance
             Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## No Resource Explorer/Groups admin or bulk tagging
+          ## -------------------------------------------------------------------
+          - Sid: DenyResourceExplorerAndTaggingAdministration
+            Effect: Deny
+            Action:
+              - resource-explorer-2:AssociateDefaultView     ## prevent setting/changing default Explorer view
+              - resource-explorer-2:Create*                  ## block creation of Explorer views/indexes
+              - resource-explorer-2:Delete*                  ## prevent deletion of Explorer views/indexes
+              - resource-explorer-2:DisassociateDefaultView  ## prevent removing default Explorer view
+              - resource-explorer-2:TagResource              ## prevent tag additions on Explorer resources
+              - resource-explorer-2:UntagResource            ## prevent tag removals on Explorer resources
+              - resource-explorer-2:Update*                  ## prevent updates to Explorer views/index configs
+              - resource-groups:Create*                      ## block creation of new resource groups
+              - resource-groups:Delete*                      ## prevent deletion of resource groups
+              - resource-groups:Tag*                         ## prevent tag additions on groups
+              - resource-groups:Untag*                       ## prevent tag removals on groups
+              - resource-groups:Update*                      ## block updates/mutations to resource groups
+              - tag:TagResources                             ## block bulk tag additions via Tag Editor
+              - tag:UntagResources                           ## block bulk tag removals via Tag Editor
+            Resource: "*"
+
+## -------------------------------------------------------------------------- ##
+## 3 - Observability & Telemetry
 
           ## -------------------------------------------------------------------
           ## AWS Config tamper prevention
@@ -263,14 +268,14 @@ Resources:
           - Sid: DenyConfigTamper
             Effect: Deny
             Action:
-              - config:Delete*                          ## prevent deletion of AWS Config resources/history (broad)
-              - config:DeleteConfigRule                 ## prevent removing individual Config rules
+              - config:Delete*                          ## prevent deletion of AWS Config resources/history (broad safety net)
+              - config:DeleteConfigRule                 ## prevent removal of individual Config rules
               - config:DeleteRemediationConfigurations  ## prevent deleting remediation configs
-              - config:PutConfigRule                    ## prevent creating/updating Config rules
-              - config:PutConfigurationRecorder         ## prevent creating/updating the configuration recorder
-              - config:PutDeliveryChannel               ## prevent delivery channel changes (S3/KMS/SNS)
-              - config:PutRemediationConfigurations     ## prevent creating/updating remediation configs
-              - config:StopConfigurationRecorder        ## prevent stopping the configuration recorder
+              - config:PutConfigRule                    ## prevent creating/updating Config rules outside governance
+              - config:PutConfigurationRecorder         ## prevent enabling/updating the configuration recorder
+              - config:PutDeliveryChannel               ## prevent changing delivery channel (S3/KMS/SNS destinations)
+              - config:PutRemediationConfigurations     ## prevent creating/updating remediation configs outside governance
+              - config:StopConfigurationRecorder        ## prevent stopping the recorder (keeps inventory active)
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -279,19 +284,19 @@ Resources:
           - Sid: DenyCloudTrailTamper
             Effect: Deny
             Action:
-              - cloudtrail:DeleteTrail        ## prevent deletion of CloudTrail trails
-              - cloudtrail:PutEventSelectors  ## prevent changing selectors (event filtering/scope)
-              - cloudtrail:StopLogging        ## prevent disabling trail logging
+              - cloudtrail:DeleteTrail        ## prevent deletion of trails
+              - cloudtrail:PutEventSelectors  ## prevent altering event selectors (filtering scope)
+              - cloudtrail:StopLogging        ## prevent disabling logging
               - cloudtrail:UpdateTrail        ## prevent mutating trail config (destinations/KMS/etc.)
             Resource: "*"
 
           ## -------------------------------------------------------------------
-          ## CloudTrail Insights toggle off (avoid stealthy audit-signal changes)
+          ## CloudTrail Insights toggle off
           ## -------------------------------------------------------------------
           - Sid: DenyCloudTrailInsightsToggle
             Effect: Deny
             Action:
-              - cloudtrail:PutInsightSelectors  # prevent enable/disable insights
+              - cloudtrail:PutInsightSelectors  ## prevent enabling/disabling Insights
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -300,12 +305,12 @@ Resources:
           - Sid: DenyLogsTamper
             Effect: Deny
             Action:
-              - logs:AssociateKmsKey        ## prevent associating arbitrary KMS keys to log groups
-              - logs:Delete*                ## prevent deletion of log groups/streams/filters/exports
-              - logs:DisassociateKmsKey     ## prevent removing KMS encryption from log groups
-              - logs:PutResourcePolicy      ## prevent cross-account Logs resource policy changes
-              - logs:PutRetentionPolicy     ## retention changes blocked
-              - logs:PutSubscriptionFilter  ## prevent exfiltration via subscription filters
+              - logs:AssociateKmsKey        ## prevent arbitrary KMS key associations
+              - logs:Delete*                ## prevent deletion of log groups/streams/exports
+              - logs:DisassociateKmsKey     ## prevent removing KMS encryption
+              - logs:PutResourcePolicy      ## prevent altering resource policies (cross-account exposure)
+              - logs:PutRetentionPolicy     ## block retention changes (governed centrally)
+              - logs:PutSubscriptionFilter  ## prevent creating cross-account/subscription exfil paths
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -314,9 +319,9 @@ Resources:
           - Sid: DenyCloudWatchAlarmTamper
             Effect: Deny
             Action:
-              - cloudwatch:DeleteAlarms         ## prevent deletion of CloudWatch alarms
-              - cloudwatch:DisableAlarmActions  ## can't mute/disable alarm actions
-              - cloudwatch:SetAlarmState        ## can't force alarm state manually
+              - cloudwatch:DeleteAlarms         ## prevent deleting alarms
+              - cloudwatch:DisableAlarmActions  ## prevent disabling alarm actions
+              - cloudwatch:SetAlarmState        ## prevent forcing manual alarm state
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -334,8 +339,24 @@ Resources:
           - Sid: DenyS3AccountPublicAccessBlockDelete
             Effect: Deny
             Action:
-              - s3:DeleteAccountPublicAccessBlock  ## prevent removing the account-level S3 Public Access Block (PAB); keeps global prevent enforced
+              - s3:DeleteAccountPublicAccessBlock  ## prevent removal of the account-wide S3 PAB
             Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## OAM sink admin blocked
+          ## -------------------------------------------------------------------
+          - Sid: DenyOamSinkAdministration
+            Effect: Deny
+            Action:
+              - oam:CreateSink     ## prevent creating cross-account telemetry sinks
+              - oam:DeleteSink     ## prevent deleting sinks and breaking pipelines
+              - oam:PutSinkPolicy  ## prevent modifying sink resource policies
+              - oam:TagResource    ## prevent adding tags on sinks
+              - oam:UntagResource  ## prevent removing tags on sinks
+            Resource: "*"
+
+## -------------------------------------------------------------------------- ##
+## 4 - Systems Management
 
           ## -------------------------------------------------------------------
           ## SSM: keep only high-risk ops denied; permit associations, MW, Automation, Parameters
@@ -344,25 +365,25 @@ Resources:
             Effect: Deny
             Action:
               - ssm:DeleteComplianceItems      ## prevent manual tampering of compliance data
-              - ssm:DeleteInventory            ## prevent deleting collected inventory
-              - ssm:PutInventory               ## prevent spoofing inventory from this principal
-              - ssm:UpdateInstanceInformation  ## agent reports only; not via human principal
-              - ssm:UpdateServiceSetting       ## prevent account-level SSM setting changes
+              - ssm:DeleteInventory            ## prevent deletion of collected inventory
+              - ssm:PutInventory               ## prevent spoofing/faking inventory records
+              - ssm:UpdateInstanceInformation  ## prevent manual instance info updates (agent-only)
+              - ssm:UpdateServiceSetting       ## prevent account-level SSM service setting changes
             Resource: "*"
 
           ## -------------------------------------------------------------------
-          ## Extra high-risk account-wide features off (adds to your existing admin-only deny)
+          ## Extra high-risk account-wide features off
           ## -------------------------------------------------------------------
           - Sid: DenySsmHighRiskExtrasTight
             Effect: Deny
             Action:
-              - ssm:CreateActivation           ## hybrid registration bootstrap (creates activation codes) — prevents onboarding rogue on-prem/other-cloud hosts
-              - ssm:RegisterManagedInstance    ## uses activation to enroll a hybrid managed instance — prevent unmanaged asset onboarding
-              - ssm:DeregisterManagedInstance  ## removal hides assets from inventory/compliance — preserve audit trail
-              - ssm:CreateResourceDataSync     ## sets up cross-account/region S3/Org sync — potential data exfil/drift
-              - ssm:UpdateResourceDataSync     ## mutates existing sync targets/filters — prevents silent redirection
-              - ssm:DeleteResourceDataSync     ## disables telemetry export — preserves central visibility
-              - ssm:PutComplianceItems         ## manual write of compliance results — blocks forging/tampering (pairs with DeleteComplianceItems deny)
+              - ssm:CreateActivation           ## block hybrid activation bootstrap (rogue host onboarding)
+              - ssm:RegisterManagedInstance    ## block hybrid managed instance registration
+              - ssm:DeregisterManagedInstance  ## block deregistration that hides assets
+              - ssm:CreateResourceDataSync     ## block cross-account/region telemetry export
+              - ssm:UpdateResourceDataSync     ## block changes to existing sync targets
+              - ssm:DeleteResourceDataSync     ## block deletion of data sync (audit trail preservation)
+              - ssm:PutComplianceItems         ## block manual injection of compliance results
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -371,11 +392,11 @@ Resources:
           - Sid: DenySsmRunWhenTagMissing
             Effect: Deny
             Action:
-              - ssm:StartSession
-              - ssm:SendCommand
+              - ssm:StartSession  ## block session start if tag is missing
+              - ssm:SendCommand   ## block RunCommand if tag is missing
             Resource: "*"
             Condition:
-              Null:
+              "Null":
                 ssm:resourceTag/NetworkManaged: "true"  ## key absent -> deny
 
           ## -------------------------------------------------------------------
@@ -384,35 +405,38 @@ Resources:
           - Sid: DenySsmRunWhenTagNotTrue
             Effect: Deny
             Action:
-              - ssm:StartSession
-              - ssm:SendCommand
+              - ssm:StartSession  ## block session start if tag != true
+              - ssm:SendCommand   ## block RunCommand if tag != true
             Resource: "*"
             Condition:
               StringNotEquals:
                 ssm:resourceTag/NetworkManaged: "true"  ## present but not "true" -> deny
 
           ## -------------------------------------------------------------------
-          ## Disallow Automation when an assume role is supplied (caller context only)
+          ## Disallow Automation when an assume role is supplied
           ## -------------------------------------------------------------------
           - Sid: DenySsmAutomationWithAssumeRole
             Effect: Deny
             Action:
-              - ssm:StartAutomationExecution
+              - ssm:StartAutomationExecution       ## block automation docs from assuming roles
             Resource: "*"
             Condition:
-              Null:
-                ssm:AutomationAssumeRole: "false"  ## key present (not null) -> deny
+              "Null":
+                ssm:AutomationAssumeRole: "false"  ## if field present (role supplied) -> deny
 
           ## -------------------------------------------------------------------
           ## Require an instance profile on every EC2 launch
           ## -------------------------------------------------------------------
           - Sid: DenyRunInstancesWithoutInstanceProfile
             Effect: Deny
-            Action: ec2:RunInstances
+            Action: ec2:RunInstances         ## block EC2 launches without an attached profile
             Resource: "*"
             Condition:
-              Null:
-                ec2:InstanceProfile: "true"  ## deny when no instance profile is provided
+              "Null":
+                ec2:InstanceProfile: "true"  ## deny when instance profile is absent
+
+## -------------------------------------------------------------------------- ##
+## 5 - Networking Services
 
           ## -------------------------------------------------------------------
           ## Service Quotas: prevent Direct Connect quota increases (ticketed process only)
@@ -420,280 +444,11 @@ Resources:
           - Sid: DenyServiceQuotasDirectConnectIncrease
             Effect: Deny
             Action:
-              - servicequotas:RequestServiceQuotaIncrease  ## require quota raises via separate ticketed/governed path
+              - servicequotas:RequestServiceQuotaIncrease  ## block quota increase requests for Direct Connect (must go through ticketed path)
             Resource: "*"
             Condition:
               StringEquals:
-                servicequotas:service: directconnect
-
-          ## -------------------------------------------------------------------
-          ## Access Analyzer lifecycle/admin blocked; read still allowed by default ceiling
-          ## -------------------------------------------------------------------
-          - Sid: DenyAccessAnalyzerAdministration
-            Effect: Deny
-            Action:
-              - access-analyzer:ApplyArchiveRule   ## prevent suppressing findings via archive rules
-              - access-analyzer:Create*            ## prevent creation of analyzers and related resources
-              - access-analyzer:CreateArchiveRule  ## prevent creating archive rules (explicit)
-              - access-analyzer:Delete*            ## prevent deletion of analyzers and configs
-              - access-analyzer:DeleteArchiveRule  ## prevent removing archive rules (explicit)
-              - access-analyzer:StartResourceScan  ## prevent ad-hoc scans outside governed workflows
-              - access-analyzer:TagResource        ## prevent tag tampering on analyzers
-              - access-analyzer:UntagResource      ## prevent tag removal on analyzers
-              - access-analyzer:Update*            ## prevent configuration/archiverule updates
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## Prevent disabling core security services
-          ## -------------------------------------------------------------------
-          - Sid: DenySecurityServicesDisable
-            Effect: Deny
-            Action:
-              - guardduty:DeleteDetector                     ## prevent deletion of GuardDuty detector
-              - guardduty:DisableOrganizationAdminAccount    ## prevent disabling GuardDuty org admin
-              - guardduty:UpdateDetector                     ## prevent weakening GuardDuty detector config
-              - inspector2:Disable                           ## prevent disabling Amazon Inspector
-              - inspector2:DisableDelegatedAdminAccount      ## prevent removing Inspector delegated admin
-              - securityhub:DisableOrganizationAdminAccount  ## prevent disabling Security Hub org admin
-              - securityhub:DisableSecurityHub               ## prevent disabling Security Hub
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## Macie disable/org admin blocked
-          ## -------------------------------------------------------------------
-          - Sid: DenyMacieDisableAndOrgAdmin
-            Effect: Deny
-            Action:
-              - macie2:DisableMacie                     ## prevent disabling Amazon Macie
-              - macie2:DisableOrganizationAdminAccount  ## prevent disabling Macie org admin
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## No Resource Explorer/Groups admin or bulk tagging
-          ## -------------------------------------------------------------------
-          - Sid: DenyResourceExplorerAndTaggingAdministration
-            Effect: Deny
-            Action:
-              - resource-explorer-2:AssociateDefaultView     ## prevent changing the account’s default search view
-              - resource-explorer-2:Create*                  ## prevent creating views/indexes across accounts/regions
-              - resource-explorer-2:Delete*                  ## prevent deleting views/indexes (breaks inventory/search)
-              - resource-explorer-2:DisassociateDefaultView  ## prevent removing the default view association
-              - resource-explorer-2:TagResource              ## prevent tag tampering on Explorer resources
-              - resource-explorer-2:UntagResource            ## prevent tag removal on Explorer resources
-              - resource-explorer-2:Update*                  ## prevent updates to views/index configs
-              - resource-groups:Create*                      ## prevent creating Resource Groups outside IaC
-              - resource-groups:Delete*                      ## prevent deleting groups used by ops/reporting
-              - resource-groups:Tag*                         ## prevent tag additions on groups (drift/ABAC bypass)
-              - resource-groups:Untag*                       ## prevent tag removals on groups
-              - resource-groups:Update*                      ## prevent mutating group definitions/queries
-              - tag:TagResources                             ## prevent bulk cross-service tagging via Tag Editor
-              - tag:UntagResources                           ## prevent bulk tag removal via Tag Editor
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## OAM sink admin blocked (prevent cross-account telemetry sink tamper)
-          ## -------------------------------------------------------------------
-          - Sid: DenyOamSinkAdministration
-            Effect: Deny
-            Action:
-              - oam:CreateSink     ## prevent creating cross-account telemetry sinks (logs/metrics/traces exfil path)
-              - oam:DeleteSink     ## prevent deleting sinks and breaking centralized observability pipelines
-              - oam:PutSinkPolicy  ## prevent modifying sink resource policies (cross-account access control)
-              - oam:TagResource    ## prevent tag additions on OAM sinks (cost/ABAC tamper)
-              - oam:UntagResource  ## prevent tag removals on OAM sinks
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CFN safety rails: no stack set deletes, no stack policy fiddling, no disabling termination protection
-          ## -------------------------------------------------------------------
-          - Sid: DenyCloudFormationPolicyAndDeletes
-            Effect: Deny
-            Action:
-              - cloudformation:DeleteStackInstances         ## prevent destructive StackSet instance removals
-              - cloudformation:DeleteStackSet               ## prevent deletion of entire StackSets
-              - cloudformation:SetStackPolicy               ## disallow changing stack protection policies
-              - cloudformation:UpdateTerminationProtection  ## prevent toggling termination protection
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CodeCommit: prevent repo lifecycle admin; allow normal Git ops
-          ## -------------------------------------------------------------------
-          - Sid: DenyCodeCommitRepoLifecycleAdmin
-            Effect: Deny
-            Action:
-              - codecommit:CreateRepository             ## repos created only via IaC/approved pipeline
-              - codecommit:DeleteRepository             ## protect history/refs; no ad-hoc deletions
-              - codecommit:UpdateRepositoryName         ## avoid breaking remotes/automation by renames
-              - codecommit:UpdateRepositoryDescription  ## prevent unmanaged metadata drift
-              - codecommit:PutRepositoryTriggers        ## prevent out-of-band trigger changes/exfil paths
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CodePipeline: prevent pipeline lifecycle/admin (definition edits via CFN only)
-          ## -------------------------------------------------------------------
-          - Sid: DenyCodePipelineLifecycleAdmin
-            Effect: Deny
-            Action:
-              - codepipeline:CreatePipeline  ## pipelines defined in CFN only
-              - codepipeline:UpdatePipeline  ## prevent console/API edits to definition
-              - codepipeline:DeletePipeline  ## no destructive deletes outside change control
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CodePipeline: prevent stage transition toggles (prevents pausing/resuming stages)
-          ## -------------------------------------------------------------------
-          - Sid: DenyCodePipelineStageTransitionToggle
-            Effect: Deny
-            Action:
-              - codepipeline:DisableStageTransition  ## prevent pausing gates to bypass approvals
-              - codepipeline:EnableStageTransition   ## prevent manual re-enables that hide drift
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CodePipeline: prevent webhook administration
-          ## -------------------------------------------------------------------
-          - Sid: DenyCodePipelineWebhookAdmin
-            Effect: Deny
-            Action:
-              - codepipeline:PutWebhook     ## prevent creating/updating external webhooks
-              - codepipeline:DeleteWebhook  ## prevent removing governed integrations
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CodePipeline: prevent custom action/job worker APIs (humans shouldn’t call these)
-          ## -------------------------------------------------------------------
-          - Sid: DenyCodePipelineCustomActionJobs
-            Effect: Deny
-            Action:
-              - codepipeline:CreateCustomActionType         ## prevent defining custom action types
-              - codepipeline:DeleteCustomActionType         ## prevent removing custom action types
-              - codepipeline:PollForJobs                    ## prevent worker polling by human principals
-              - codepipeline:AcknowledgeJob                 ## prevent manual job acknowledgements
-              - codepipeline:PutJobSuccessResult            ## prevent faking job success
-              - codepipeline:PutJobFailureResult            ## prevent forcing job failure
-              - codepipeline:AcknowledgeThirdPartyJob       ## prevent 3P job acknowledgements
-              - codepipeline:GetThirdPartyJobDetails        ## prevent reading 3P job payloads
-              - codepipeline:PutThirdPartyJobSuccessResult  ## prevent faking 3P job success
-              - codepipeline:PutThirdPartyJobFailureResult  ## prevent forcing 3P job failure
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CodeBuild: prevent project lifecycle/admin (definitions via CFN only)
-          ## -------------------------------------------------------------------
-          - Sid: DenyCodeBuildProjectLifecycleAdmin
-            Effect: Deny
-            Action:
-              - codebuild:CreateProject  ## projects created via IaC only
-              - codebuild:UpdateProject  ## prevent console/API edits to project config
-              - codebuild:DeleteProject  ## no destructive deletes outside change control
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CodeBuild: prevent webhook administration
-          ## -------------------------------------------------------------------
-          - Sid: DenyCodeBuildWebhookAdmin
-            Effect: Deny
-            Action:
-              - codebuild:CreateWebhook  ## prevent adding SCM-trigger webhooks
-              - codebuild:DeleteWebhook  ## prevent removing governed webhooks
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CodeBuild: prevent source credential/admin token operations
-          ## -------------------------------------------------------------------
-          - Sid: DenyCodeBuildSourceCredentialAdmin
-            Effect: Deny
-            Action:
-              - codebuild:ImportSourceCredentials  ## prevent storing SCM creds in the account
-              - codebuild:DeleteSourceCredentials  ## prevent covert credential cleanup/tamper
-              - codebuild:PersistOAuthToken        ## prevent persisting OAuth tokens in CodeBuild
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CodeBuild: prevent resource policy administration on projects/report groups
-          ## -------------------------------------------------------------------
-          - Sid: DenyCodeBuildResourcePolicyAdmin
-            Effect: Deny
-            Action:
-              - codebuild:PutResourcePolicy     ## prevent cross-account exposure via resource policies
-              - codebuild:DeleteResourcePolicy  ## prevent tampering/removal of existing policies
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CodeBuild: prevent making projects public
-          ## -------------------------------------------------------------------
-          - Sid: DenyCodeBuildPublicProjectVisibility
-            Effect: Deny
-            Action:
-              - codebuild:UpdateProjectVisibility ## disallow switching to PUBLIC visibility
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CodeBuild Fleets: prevent fleet lifecycle/admin
-          ## -------------------------------------------------------------------
-          - Sid: DenyCodeBuildFleetAdmin
-            Effect: Deny
-            Action:
-              - codebuild:CreateFleet  ## prevent creating compute fleets
-              - codebuild:UpdateFleet  ## prevent changing fleet capacity/config
-              - codebuild:DeleteFleet  ## prevent fleet deletion outside governance
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CodeBuild: prevent batch build APIs (single-build ops only)
-          ## -------------------------------------------------------------------
-          - Sid: DenyCodeBuildBatchBuilds
-            Effect: Deny
-            Action:
-              - codebuild:StartBuildBatch  ## restrict to single builds; no batch starts
-              - codebuild:RetryBuildBatch  ## prevent batch retries by humans
-              - codebuild:StopBuildBatch   ## prevent stopping batches manually
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CodeBuild: prevent deletion of build records
-          ## -------------------------------------------------------------------
-          - Sid: DenyCodeBuildDeleteBuilds
-            Effect: Deny
-            Action:
-              - codebuild:BatchDeleteBuilds  ## preserve build history/logs for audit/forensics
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CodeDeploy: prevent application/deployment group/config admin (definitions via CFN only)
-          ## -------------------------------------------------------------------
-          - Sid: DenyCodeDeployAppGroupConfigAdmin
-            Effect: Deny
-            Action:
-              - codedeploy:CreateApplication        ## apps defined via IaC only
-              - codedeploy:UpdateApplication        ## prevent console/API edits to app metadata
-              - codedeploy:DeleteApplication        ## prevent destructive deletes
-              - codedeploy:CreateDeploymentGroup    ## groups defined via IaC only
-              - codedeploy:UpdateDeploymentGroup    ## prevent console/API edits to group config
-              - codedeploy:DeleteDeploymentGroup    ## prevent destructive deletes
-              - codedeploy:CreateDeploymentConfig   ## deployment configs via IaC only
-              - codedeploy:DeleteDeploymentConfig   ## prevent removal of governed configs
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CodeDeploy: prevent GitHub token administration
-          ## -------------------------------------------------------------------
-          - Sid: DenyCodeDeployGitHubTokenAdmin
-            Effect: Deny
-            Action:
-              - codedeploy:RegisterGitHubAccountToken  ## prevent storing/updating GitHub tokens in account
-              - codedeploy:DeleteGitHubAccountToken    ## prevent covert token removal/tamper
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CodeDeploy: prevent on-premises instance registration
-          ## -------------------------------------------------------------------
-          - Sid: DenyCodeDeployOnPremAdmin
-            Effect: Deny
-            Action:
-              - codedeploy:RegisterOnPremisesInstance    ## prevent unmanaged on-prem registration
-              - codedeploy:DeregisterOnPremisesInstance  ## prevent deregistration that hides assets
-            Resource: "*"
+                servicequotas:service: directconnect       ## scope only to Direct Connect quotas
 
           ## -------------------------------------------------------------------
           ## Direct Connect administration blocked
@@ -701,18 +456,18 @@ Resources:
           - Sid: DenyDirectConnectAdministration
             Effect: Deny
             Action:
-              - directconnect:Accept*        ## prevent accepting hosted connections/VIFs/association proposals without governance
-              - directconnect:Allocate*      ## prevent allocating hosted connections or (transit/private/public) virtual interfaces
-              - directconnect:Associate*     ## prevent associating gateways/VIFs (e.g., DXGW <-> VGW/TGW) outside IaC/change control
-              - directconnect:Attach*        ## cover any attach-style DX APIs; prevent attaching resources to LAGs/gateways
-              - directconnect:Confirm*       ## prevent confirming connections/VIFs into active state without review
-              - directconnect:Create*        ## prevent creating connections/LAGs/gateways/VIFs directly
-              - directconnect:Delete*        ## prevent deletion of DX resources that would disrupt connectivity
-              - directconnect:Detach*        ## cover any detach-style DX APIs; prevent detaching from LAGs/gateways
-              - directconnect:Disassociate*  ## prevent disassociation of gateways/VIFs once governed
-              - directconnect:Update*        ## prevent configuration changes on DX resources (MTU, VLAN, BGP, names)
-              - directconnect:TagResource    ## prevent tag additions (cost/ABAC drift)
-              - directconnect:UntagResource  ## prevent tag removals (cost/ABAC tamper)
+              - directconnect:Accept*        ## block acceptance of hosted connections/VIFs/associations
+              - directconnect:Allocate*      ## block allocation of new hosted connections or VIFs
+              - directconnect:Associate*     ## block associating DXGWs/VIFs outside governance
+              - directconnect:Attach*        ## block attaching DX resources (LAGs/gateways/etc.)
+              - directconnect:Confirm*       ## block confirmations of DX connections/VIFs
+              - directconnect:Create*        ## block creation of DX resources (connections/LAGs/GWs/VIFs)
+              - directconnect:Delete*        ## block deletion of DX resources (connectivity risk)
+              - directconnect:Detach*        ## block detaching DX resources (LAGs/gateways/etc.)
+              - directconnect:Disassociate*  ## block disassociating DXGWs/VIFs once established
+              - directconnect:Update*        ## block modifying DX resource configs (BGP, VLAN, MTU, etc.)
+              - directconnect:TagResource    ## block tag additions on DX resources
+              - directconnect:UntagResource  ## block tag removals on DX resources
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -721,39 +476,265 @@ Resources:
           - Sid: DenyRoute53DomainsRegistrarAdministration
             Effect: Deny
             Action:
-              - route53domains:AssociateDelegationSignerToDomain       ## prevent DS record add
-              - route53domains:DeleteDomain                            ## prevent destructive domain deletes
-              - route53domains:DisableDomainAutoRenew                  ## prevent disabling auto-renew
-              - route53domains:DisassociateDelegationSignerFromDomain  ## prevent DS record drop
-              - route53domains:EnableDomainAutoRenew                   ## prevent auto-renew enable
-              - route53domains:RegisterDomain                          ## prevent new domain registrations
-              - route53domains:TransferDomain                          ## prevent outbound transfers
-              - route53domains:TransferDomainToAnotherAwsAccount       ## prevent account pushes
-              - route53domains:UpdateDomainContact                     ## prevent owner/contacts edits
-              - route53domains:UpdateDomainContactPrivacy              ## prevent WHOIS privacy flips
-              - route53domains:UpdateDomainNameservers                 ## prevent nameserver swaps
-              - route53domains:UpdateTagsForDomain                     ## prevent tag changes on domains
+              - route53domains:AssociateDelegationSignerToDomain       ## block adding DS records
+              - route53domains:DeleteDomain                            ## block destructive domain deletions
+              - route53domains:DisableDomainAutoRenew                  ## block disabling auto-renew
+              - route53domains:DisassociateDelegationSignerFromDomain  ## block removing DS records
+              - route53domains:EnableDomainAutoRenew                   ## block enabling auto-renew (governed centrally)
+              - route53domains:RegisterDomain                          ## block new domain registrations
+              - route53domains:TransferDomain                          ## block outbound transfers
+              - route53domains:TransferDomainToAnotherAwsAccount       ## block pushing domains to other accounts
+              - route53domains:UpdateDomainContact                     ## block editing registrant/owner contact details
+              - route53domains:UpdateDomainContactPrivacy              ## block flipping WHOIS privacy
+              - route53domains:UpdateDomainNameservers                 ## block swapping nameservers
+              - route53domains:UpdateTagsForDomain                     ## block domain-level tag changes
             Resource: "*"
 
-# ---------------------------------------------------------------------------- #
+## -------------------------------------------------------------------------- ##
+## 6 - Security & Compliance
 
           ## -------------------------------------------------------------------
-          ## ACM minimal safety (keep account-level + key export off)
+          ## Access Analyzer lifecycle/admin blocked; read still allowed by default ceiling
           ## -------------------------------------------------------------------
-          - Sid: DenyAcmAccountAndExportOnly
+          - Sid: DenyAccessAnalyzerAdministration
             Effect: Deny
             Action:
-              - acm:ExportCertificate                    # prevent private key exfiltration
-              - acm:PutAccountConfiguration              # prevent account-wide ACM setting changes
+              - access-analyzer:ApplyArchiveRule   ## block suppressing findings via archive rules
+              - access-analyzer:Create*            ## block creating analyzers and related resources
+              - access-analyzer:CreateArchiveRule  ## block explicit creation of archive rules
+              - access-analyzer:Delete*            ## block deleting analyzers and their configs
+              - access-analyzer:DeleteArchiveRule  ## block explicit deletion of archive rules
+              - access-analyzer:StartResourceScan  ## block ad-hoc scans (must be governed)
+              - access-analyzer:TagResource        ## block adding tags to analyzers
+              - access-analyzer:UntagResource      ## block removing tags from analyzers
+              - access-analyzer:Update*            ## block updates to analyzers and archive rules
             Resource: "*"
 
-# ---------------------------------------------------------------------------- #
+          ## -------------------------------------------------------------------
+          ## Prevent disabling GuardDuty (detector/admin/config)
+          ## -------------------------------------------------------------------
+          - Sid: DenyGuardDutyDisable
+            Effect: Deny
+            Action:
+              - guardduty:DeleteDetector                   ## prevent deletion of GuardDuty detector
+              - guardduty:DisableOrganizationAdminAccount  ## prevent disabling GuardDuty delegated org admin
+              - guardduty:UpdateDetector                   ## prevent weakening GuardDuty detector config
+            Resource: "*"
 
-Outputs:
+          ## -------------------------------------------------------------------
+          ## Prevent disabling Inspector (service/admin)
+          ## -------------------------------------------------------------------
+          - Sid: DenyInspectorDisable
+            Effect: Deny
+            Action:
+              - inspector2:Disable                       ## prevent disabling Amazon Inspector
+              - inspector2:DisableDelegatedAdminAccount  ## prevent removing Inspector delegated admin
+            Resource: "*"
 
-  ## ---------------------------------------------------------------------------
-  ## Resolved ARN of the permissions-boundary managed policy.
-  ## ---------------------------------------------------------------------------
-  NetworkArchitecturePermissionsBoundaryArn:
-    Description: "ARN of the Network Architecture IAM permissions boundary managed policy"
-    Value: !Ref NetworkArchitecturePermissionsBoundary
+          ## -------------------------------------------------------------------
+          ## Prevent disabling Security Hub (service/admin)
+          ## -------------------------------------------------------------------
+          - Sid: DenySecurityHubDisable
+            Effect: Deny
+            Action:
+              - securityhub:DisableOrganizationAdminAccount  ## prevent disabling Security Hub delegated org admin
+              - securityhub:DisableSecurityHub               ## prevent disabling Security Hub itself
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Macie disable/org admin blocked
+          ## -------------------------------------------------------------------
+          - Sid: DenyMacieDisableAndOrgAdmin
+            Effect: Deny
+            Action:
+              - macie2:DisableMacie                     ## block disabling Amazon Macie in the account
+              - macie2:DisableOrganizationAdminAccount  ## block removing/disabling Macie delegated org admin
+            Resource: "*"
+
+## -------------------------------------------------------------------------- ##
+## 7 - Development — Source & Orchestration
+
+          ## -------------------------------------------------------------------
+          ## CodeCommit: prevent repo lifecycle admin; allow normal Git ops
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeCommitRepoLifecycleAdmin
+            Effect: Deny
+            Action:
+              - codecommit:CreateRepository             ## block creating repos (must be via IaC/pipeline)
+              - codecommit:DeleteRepository             ## block deleting repos (protect history)
+              - codecommit:UpdateRepositoryName         ## block renaming repos (breaks remotes/automation)
+              - codecommit:UpdateRepositoryDescription  ## block unmanaged description changes
+              - codecommit:PutRepositoryTriggers        ## block adding/modifying triggers (exfil paths)
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodePipeline: prevent pipeline lifecycle/admin (definition edits via CFN only)
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodePipelineLifecycleAdmin
+            Effect: Deny
+            Action:
+              - codepipeline:CreatePipeline  ## block creating pipelines outside IaC
+              - codepipeline:UpdatePipeline  ## block editing pipeline definitions manually
+              - codepipeline:DeletePipeline  ## block deleting pipelines outside change control
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodePipeline: prevent stage transition toggles
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodePipelineStageTransitionToggle
+            Effect: Deny
+            Action:
+              - codepipeline:DisableStageTransition  ## block pausing stage transitions
+              - codepipeline:EnableStageTransition   ## block resuming transitions outside governance
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodePipeline: prevent webhook administration
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodePipelineWebhookAdmin
+            Effect: Deny
+            Action:
+              - codepipeline:PutWebhook     ## block creating/updating webhooks
+              - codepipeline:DeleteWebhook  ## block deleting governed webhooks
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodePipeline: prevent custom action/job worker APIs
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodePipelineCustomActionJobs
+            Effect: Deny
+            Action:
+              - codepipeline:CreateCustomActionType         ## block defining custom action types
+              - codepipeline:DeleteCustomActionType         ## block deleting custom action types
+              - codepipeline:PollForJobs                    ## block human principals polling for jobs
+              - codepipeline:AcknowledgeJob                 ## block manual job acknowledgements
+              - codepipeline:PutJobSuccessResult            ## block faking job success
+              - codepipeline:PutJobFailureResult            ## block forcing job failure
+              - codepipeline:AcknowledgeThirdPartyJob       ## block acknowledging 3rd-party jobs
+              - codepipeline:GetThirdPartyJobDetails        ## block fetching details of 3rd-party jobs
+              - codepipeline:PutThirdPartyJobSuccessResult  ## block faking 3rd-party job success
+              - codepipeline:PutThirdPartyJobFailureResult  ## block forcing 3rd-party job failure
+            Resource: "*"
+
+## -------------------------------------------------------------------------- ##
+## 8 - Development — Build & Deployment
+
+          ## -------------------------------------------------------------------
+          ## CodeBuild: prevent project lifecycle/admin (definitions via CFN only)
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeBuildProjectLifecycleAdmin
+            Effect: Deny
+            Action:
+              - codebuild:CreateProject  ## block creating CodeBuild projects (must be via IaC)
+              - codebuild:UpdateProject  ## block updating project configs manually
+              - codebuild:DeleteProject  ## block deleting projects outside governance
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeBuild: prevent webhook administration
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeBuildWebhookAdmin
+            Effect: Deny
+            Action:
+              - codebuild:CreateWebhook  ## block adding SCM-trigger webhooks
+              - codebuild:DeleteWebhook  ## block removing governed SCM webhooks
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeBuild: prevent source credential/admin token operations
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeBuildSourceCredentialAdmin
+            Effect: Deny
+            Action:
+              - codebuild:ImportSourceCredentials  ## block storing SCM credentials in CodeBuild
+              - codebuild:DeleteSourceCredentials  ## block deleting SCM credentials covertly
+              - codebuild:PersistOAuthToken        ## block persisting OAuth tokens in CodeBuild
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeBuild: prevent resource policy administration on projects/report groups
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeBuildResourcePolicyAdmin
+            Effect: Deny
+            Action:
+              - codebuild:PutResourcePolicy     ## block creating/updating cross-account policies
+              - codebuild:DeleteResourcePolicy  ## block deleting existing resource policies
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeBuild: prevent making projects public
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeBuildPublicProjectVisibility
+            Effect: Deny
+            Action:
+              - codebuild:UpdateProjectVisibility ## block switching projects to PUBLIC visibility
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeBuild Fleets: prevent fleet lifecycle/admin
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeBuildFleetAdmin
+            Effect: Deny
+            Action:
+              - codebuild:CreateFleet  ## block creating compute fleets
+              - codebuild:UpdateFleet  ## block changing fleet size/config manually
+              - codebuild:DeleteFleet  ## block deleting fleets outside governance
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeBuild: prevent batch build APIs (single-build ops only)
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeBuildBatchBuilds
+            Effect: Deny
+            Action:
+              - codebuild:StartBuildBatch  ## block starting batch builds
+              - codebuild:RetryBuildBatch  ## block retrying batches manually
+              - codebuild:StopBuildBatch   ## block manually stopping batch builds
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeBuild: prevent deletion of build records
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeBuildDeleteBuilds
+            Effect: Deny
+            Action:
+              - codebuild:BatchDeleteBuilds  ## block deleting build history/logs
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeDeploy: prevent application/deployment group/config admin (definitions via CFN only)
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeDeployAppGroupConfigAdmin
+            Effect: Deny
+            Action:
+              - codedeploy:CreateApplication      ## block creating apps (must be via IaC)
+              - codedeploy:UpdateApplication      ## block updating app configs manually
+              - codedeploy:DeleteApplication      ## block deleting apps
+              - codedeploy:CreateDeploymentGroup  ## block creating deployment groups (via IaC only)
+              - codedeploy:UpdateDeploymentGroup  ## block editing group configs manually
+              - codedeploy:DeleteDeploymentGroup  ## block deleting deployment groups
+              - codedeploy:CreateDeploymentConfig ## block creating deployment configs manually
+              - codedeploy:DeleteDeploymentConfig ## block deleting governed deployment configs
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeDeploy: prevent GitHub token administration
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeDeployGitHubTokenAdmin
+            Effect: Deny
+            Action:
+              - codedeploy:RegisterGitHubAccountToken  ## block storing/updating GitHub tokens
+              - codedeploy:DeleteGitHubAccountToken    ## block deleting GitHub tokens covertly
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeDeploy: prevent on-premises instance registration
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeDeployOnPremAdmin
+            Effect: Deny
+            Action:
+              - codedeploy:RegisterOnPremisesInstance    ## block unmanaged on-prem instance registration
+              - codedeploy:DeregisterOnPremisesInstance  ## block deregistration (hides assets)
+            Resource: "*"
+
+## -------------------------------------------------------------------------- ##

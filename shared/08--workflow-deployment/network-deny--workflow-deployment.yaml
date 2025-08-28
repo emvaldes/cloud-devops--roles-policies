@@ -1,0 +1,159 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Common Deny Policy — Development: Workflow & Deployment (CodeBuild, CodeDeploy)"
+
+Parameters:
+
+  ManagedPolicyName:
+    Type: String
+    Default: network-deny--workflow-deployment
+    Description: "IAM managed policy name for Development Workflow & Deployment deny guardrails"
+
+  CustomPolicyPath:
+    Type: String
+    Default: "/managed/network/"
+    AllowedPattern: "^/([A-Za-z0-9+=,.@_-]+/)*$"
+    Description: "IAM path prefix for policies (use / to disable)"
+
+Resources:
+
+  NetworkDenyWorkflowDeployment:
+
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+
+      ManagedPolicyName: !Ref ManagedPolicyName
+      Path: !Ref CustomPolicyPath
+      Description: "Deny guardrails for Development Workflow & Deployment (CodeBuild, CodeDeploy)"
+
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+
+## -------------------------------------------------------------------------- ##
+## 8 - Development — Workflow & Deployment
+
+          ## -------------------------------------------------------------------
+          ## CodeBuild: prevent project lifecycle/admin (definitions via CFN only)
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeBuildProjectLifecycleAdmin
+            Effect: Deny
+            Action:
+              - codebuild:CreateProject  ## block creating CodeBuild projects (must be via IaC)
+              - codebuild:UpdateProject  ## block updating project configs manually
+              - codebuild:DeleteProject  ## block deleting projects outside governance
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeBuild: prevent webhook administration
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeBuildWebhookAdmin
+            Effect: Deny
+            Action:
+              - codebuild:CreateWebhook  ## block adding SCM-trigger webhooks
+              - codebuild:DeleteWebhook  ## block removing governed SCM webhooks
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeBuild: prevent source credential/admin token operations
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeBuildSourceCredentialAdmin
+            Effect: Deny
+            Action:
+              - codebuild:ImportSourceCredentials  ## block storing SCM credentials in CodeBuild
+              - codebuild:DeleteSourceCredentials  ## block deleting SCM credentials covertly
+              - codebuild:PersistOAuthToken        ## block persisting OAuth tokens in CodeBuild
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeBuild: prevent resource policy administration on projects/report groups
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeBuildResourcePolicyAdmin
+            Effect: Deny
+            Action:
+              - codebuild:PutResourcePolicy     ## block creating/updating cross-account policies
+              - codebuild:DeleteResourcePolicy  ## block deleting existing resource policies
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeBuild: prevent making projects public
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeBuildPublicProjectVisibility
+            Effect: Deny
+            Action:
+              - codebuild:UpdateProjectVisibility ## block switching projects to PUBLIC visibility
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeBuild Fleets: prevent fleet lifecycle/admin
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeBuildFleetAdmin
+            Effect: Deny
+            Action:
+              - codebuild:CreateFleet  ## block creating compute fleets
+              - codebuild:UpdateFleet  ## block changing fleet size/config manually
+              - codebuild:DeleteFleet  ## block deleting fleets outside governance
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeBuild: prevent batch build APIs (single-build ops only)
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeBuildBatchBuilds
+            Effect: Deny
+            Action:
+              - codebuild:StartBuildBatch  ## block starting batch builds
+              - codebuild:RetryBuildBatch  ## block retrying batches manually
+              - codebuild:StopBuildBatch   ## block manually stopping batch builds
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeBuild: prevent deletion of build records
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeBuildDeleteBuilds
+            Effect: Deny
+            Action:
+              - codebuild:BatchDeleteBuilds  ## block deleting build history/logs
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeDeploy: prevent application/deployment group/config admin (definitions via CFN only)
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeDeployAppGroupConfigAdmin
+            Effect: Deny
+            Action:
+              - codedeploy:CreateApplication      ## block creating apps (must be via IaC)
+              - codedeploy:UpdateApplication      ## block updating app configs manually
+              - codedeploy:DeleteApplication      ## block deleting apps
+              - codedeploy:CreateDeploymentGroup  ## block creating deployment groups (via IaC only)
+              - codedeploy:UpdateDeploymentGroup  ## block editing group configs manually
+              - codedeploy:DeleteDeploymentGroup  ## block deleting deployment groups
+              - codedeploy:CreateDeploymentConfig ## block creating deployment configs manually
+              - codedeploy:DeleteDeploymentConfig ## block deleting governed deployment configs
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeDeploy: prevent GitHub token administration
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeDeployGitHubTokenAdmin
+            Effect: Deny
+            Action:
+              - codedeploy:RegisterGitHubAccountToken  ## block storing/updating GitHub tokens
+              - codedeploy:DeleteGitHubAccountToken    ## block deleting GitHub tokens covertly
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CodeDeploy: prevent on-premises instance registration
+          ## -------------------------------------------------------------------
+          - Sid: DenyCodeDeployOnPremAdmin
+            Effect: Deny
+            Action:
+              - codedeploy:RegisterOnPremisesInstance    ## block unmanaged on-prem instance registration
+              - codedeploy:DeregisterOnPremisesInstance  ## block deregistration (hides assets)
+            Resource: "*"
+
+## -------------------------------------------------------------------------- ##
+
+Outputs:
+
+  NetworkDenyWorkflowDeploymentPolicyArn:
+    Description: "ARN of the Development Workflow & Deployment deny IAM managed policy"
+    Value: !Ref NetworkDenyWorkflowDeployment

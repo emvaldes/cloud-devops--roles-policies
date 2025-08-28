@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Common Deny Policy — Utilities & Support (CloudShell, Amazon Q, RAM, Resource Explorer/Groups, Tagging)"
+
+Parameters:
+
+  ManagedPolicyName:
+    Type: String
+    Default: network-deny--utilities-support
+    Description: "IAM managed policy name for Utilities & Support deny guardrails"
+
+  CustomPolicyPath:
+    Type: String
+    Default: "/managed/network/"
+    AllowedPattern: "^/([A-Za-z0-9+=,.@_-]+/)*$"
+    Description: "IAM path prefix for policies (use / to disable)"
+
+Resources:
+
+  NetworkDenyUtilitiesSupportPolicy:
+
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+
+      ManagedPolicyName: !Ref ManagedPolicyName
+      Path: !Ref CustomPolicyPath
+      Description: "Deny guardrails for Utilities & Support services (CloudShell, Amazon Q, RAM, Resource Explorer, Groups, Tagging)"
+
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+
+## -------------------------------------------------------------------------- ##
+## 2 - Utilities & Support
+
+          ## -------------------------------------------------------------------
+          ## Prevent CloudShell exfil/infil and credential injection
+          ## -------------------------------------------------------------------
+          - Sid: DenyCloudShellFileXferAndCredInject
+            Effect: Deny
+            Action:
+              - cloudshell:GetFileDownloadUrls  ## Prevent file exfil
+              - cloudshell:GetFileUploadUrls    ## Prevent file infil
+              - cloudshell:PutCredentials       ## Prevent credential seeding
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Q / Q Business administration blocked
+          ## -------------------------------------------------------------------
+          - Sid: DenyAmazonQAdministration
+            Effect: Deny
+            Action:
+              - q:Associate*             ## block data source / app / user associations in Amazon Q
+              - q:Create*                ## prevent creation of new Amazon Q resources
+              - q:Delete*                ## prevent deletion of Amazon Q resources
+              - q:Disassociate*          ## block disassociation of linked resources in Amazon Q
+              - q:Put*                   ## prevent configuration/state changes
+              - q:TagResource            ## prevent tag additions
+              - q:UntagResource          ## prevent tag removals
+              - q:Update*                ## prevent updates to Q resources/config
+              - qbusiness:Associate*     ## block associations in Q Business
+              - qbusiness:Create*        ## prevent creation of Q Business resources
+              - qbusiness:Delete*        ## prevent deletion of Q Business resources
+              - qbusiness:Disassociate*  ## block disassociations in Q Business
+              - qbusiness:Put*           ## prevent configuration/state changes in Q Business
+              - qbusiness:TagResource    ## prevent tag additions on Q Business resources
+              - qbusiness:UntagResource  ## prevent tag removals on Q Business resources
+              - qbusiness:Update*        ## prevent updates to Q Business resources/config
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## No org-wide RAM toggles
+          ## -------------------------------------------------------------------
+          - Sid: DenyOrgWideRAMSharing
+            Effect: Deny
+            Action:
+              - ram:DisableSharingWithAwsOrganization  ## prevent disabling org-wide RAM sharing
+              - ram:EnableSharingWithAwsOrganization   ## prevent enabling org-wide RAM sharing without governance
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## No Resource Explorer/Groups admin or bulk tagging
+          ## -------------------------------------------------------------------
+          - Sid: DenyResourceExplorerAndTaggingAdministration
+            Effect: Deny
+            Action:
+              - resource-explorer-2:AssociateDefaultView     ## prevent setting/changing default Explorer view
+              - resource-explorer-2:Create*                  ## block creation of Explorer views/indexes
+              - resource-explorer-2:Delete*                  ## prevent deletion of Explorer views/indexes
+              - resource-explorer-2:DisassociateDefaultView  ## prevent removing default Explorer view
+              - resource-explorer-2:TagResource              ## prevent tag additions on Explorer resources
+              - resource-explorer-2:UntagResource            ## prevent tag removals on Explorer resources
+              - resource-explorer-2:Update*                  ## prevent updates to Explorer views/index configs
+              - resource-groups:Create*                      ## block creation of new resource groups
+              - resource-groups:Delete*                      ## prevent deletion of resource groups
+              - resource-groups:Tag*                         ## prevent tag additions on groups
+              - resource-groups:Untag*                       ## prevent tag removals on groups
+              - resource-groups:Update*                      ## block updates/mutations to resource groups
+              - tag:TagResources                             ## block bulk tag additions via Tag Editor
+              - tag:UntagResources                           ## block bulk tag removals via Tag Editor
+            Resource: "*"
+
+## -------------------------------------------------------------------------- ##
+
+Outputs:
+
+  NetworkDenyUtilitiesSupportPolicyArn:
+    Description: "ARN of the Utilities & Support deny IAM managed policy"
+    Value: !Ref NetworkDenyUtilitiesSupportPolicy

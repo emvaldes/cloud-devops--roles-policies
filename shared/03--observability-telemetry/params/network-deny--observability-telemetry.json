@@ -1,0 +1,4 @@
+[
+  { "ParameterKey": "ManagedPolicyName", "ParameterValue": "network-deny--observability-telemetry" },
+  { "ParameterKey": "CustomPolicyPath",  "ParameterValue": "/managed/network/" }
+]
