@@ -25,7 +25,7 @@
     },
     {
         "ParameterKey": "ManagedPolicyName",
-        "ParameterValue": "network-administrator"
+        "ParameterValue": "network-administrator-policy"
     },
     {
         "ParameterKey": "PermissionsBoundaryPolicyName",

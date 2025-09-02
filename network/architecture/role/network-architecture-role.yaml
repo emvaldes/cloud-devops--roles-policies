@@ -121,8 +121,35 @@ Resources:
 
       ## Attach the REQUIRED managed policy (name + path resolved into an ARN).
       ManagedPolicyArns:
+        # Overlay (unique to this profile)
         - !Sub
           - "arn:aws:iam::${AccountNumber}:policy${PathPart}${ManagedPolicyName}"
+          - { PathPart: !If [ PathIsRoot, "/", !Ref CustomPolicyPath ] }
+
+        # Common merged segment policies
+        - !Sub
+          - "arn:aws:iam::${AccountNumber}:policy${PathPart}network--infrastructure"
+          - { PathPart: !If [ PathIsRoot, "/", !Ref CustomPolicyPath ] }
+        - !Sub
+          - "arn:aws:iam::${AccountNumber}:policy${PathPart}network--utilities-support"
+          - { PathPart: !If [ PathIsRoot, "/", !Ref CustomPolicyPath ] }
+        - !Sub
+          - "arn:aws:iam::${AccountNumber}:policy${PathPart}network--observability-telemetry"
+          - { PathPart: !If [ PathIsRoot, "/", !Ref CustomPolicyPath ] }
+        - !Sub
+          - "arn:aws:iam::${AccountNumber}:policy${PathPart}network--systems-management"
+          - { PathPart: !If [ PathIsRoot, "/", !Ref CustomPolicyPath ] }
+        - !Sub
+          - "arn:aws:iam::${AccountNumber}:policy${PathPart}network--networking-services"
+          - { PathPart: !If [ PathIsRoot, "/", !Ref CustomPolicyPath ] }
+        - !Sub
+          - "arn:aws:iam::${AccountNumber}:policy${PathPart}network--security-compliance"
+          - { PathPart: !If [ PathIsRoot, "/", !Ref CustomPolicyPath ] }
+        - !Sub
+          - "arn:aws:iam::${AccountNumber}:policy${PathPart}network--workflow-orchestration"
+          - { PathPart: !If [ PathIsRoot, "/", !Ref CustomPolicyPath ] }
+        - !Sub
+          - "arn:aws:iam::${AccountNumber}:policy${PathPart}network--workflow-deployment"
           - { PathPart: !If [ PathIsRoot, "/", !Ref CustomPolicyPath ] }
 
       ## Enforce the REQUIRED permissions boundary (name + path resolved into an ARN).
@@ -158,6 +185,62 @@ Outputs:
     Value:
       !Sub
         - "arn:aws:iam::${AccountNumber}:policy${PathPart}${ManagedPolicyName}"
+        - { PathPart: !If [ PathIsRoot, "/", !Ref CustomPolicyPath ] }
+
+  InfrastructurePolicyArn:
+    Description: "Infrastructure managed policy's ARN"
+    Value:
+      !Sub
+        - "arn:aws:iam::${AccountNumber}:policy${PathPart}network--infrastructure"
+        - { PathPart: !If [ PathIsRoot, "/", !Ref CustomPolicyPath ] }
+
+  UtilitiesSupportPolicyArn:
+    Description: "Utilities & Support managed policy's ARN"
+    Value:
+      !Sub
+        - "arn:aws:iam::${AccountNumber}:policy${PathPart}network--utilities-support"
+        - { PathPart: !If [ PathIsRoot, "/", !Ref CustomPolicyPath ] }
+
+  ObservabilityTelemetryPolicyArn:
+    Description: "Observability & Telemetry managed policy's ARN"
+    Value:
+      !Sub
+        - "arn:aws:iam::${AccountNumber}:policy${PathPart}network--observability-telemetry"
+        - { PathPart: !If [ PathIsRoot, "/", !Ref CustomPolicyPath ] }
+
+  SystemsManagementPolicyArn:
+    Description: "Systems Management managed policy's ARN"
+    Value:
+      !Sub
+        - "arn:aws:iam::${AccountNumber}:policy${PathPart}network--systems-management"
+        - { PathPart: !If [ PathIsRoot, "/", !Ref CustomPolicyPath ] }
+
+  NetworkingServicesPolicyArn:
+    Description: "Networking Services managed policy's ARN"
+    Value:
+      !Sub
+        - "arn:aws:iam::${AccountNumber}:policy${PathPart}network--networking-services"
+        - { PathPart: !If [ PathIsRoot, "/", !Ref CustomPolicyPath ] }
+
+  SecurityCompliancePolicyArn:
+    Description: "Security & Compliance managed policy's ARN"
+    Value:
+      !Sub
+        - "arn:aws:iam::${AccountNumber}:policy${PathPart}network--security-compliance"
+        - { PathPart: !If [ PathIsRoot, "/", !Ref CustomPolicyPath ] }
+
+  WorkflowOrchestrationPolicyArn:
+    Description: "Workflow Orchestration managed policy's ARN"
+    Value:
+      !Sub
+        - "arn:aws:iam::${AccountNumber}:policy${PathPart}network--workflow-orchestration"
+        - { PathPart: !If [ PathIsRoot, "/", !Ref CustomPolicyPath ] }
+
+  WorkflowDeploymentPolicyArn:
+    Description: "Workflow Deployment managed policy's ARN"
+    Value:
+      !Sub
+        - "arn:aws:iam::${AccountNumber}:policy${PathPart}network--workflow-deployment"
         - { PathPart: !If [ PathIsRoot, "/", !Ref CustomPolicyPath ] }
 
   ## Resolved ARN for the enforced permissions boundary.
