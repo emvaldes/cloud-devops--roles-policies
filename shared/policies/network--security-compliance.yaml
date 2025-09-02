@@ -1,0 +1,204 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Merged IAM Managed Policy — Security & Compliance (deny first, then allow)"
+
+Parameters:
+
+  ManagedPolicyName:
+    Type: String
+    Default: network--security-compliance
+    Description: "IAM managed policy name for Security & Compliance"
+
+  CustomPolicyPath:
+    Type: String
+    Default: "/managed/network/"
+    AllowedPattern: "^/([A-Za-z0-9+=,.@_-]+/)*$"
+    Description: "IAM path prefix for policies (use / to disable)"
+
+Resources:
+
+  SecurityCompliancePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+
+      ManagedPolicyName: !Ref ManagedPolicyName
+      Path: !Ref CustomPolicyPath
+
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+
+## -------------------------------------------------------------------------- ##
+## 6 - Deny: Security & Compliance
+
+          ## -------------------------------------------------------------------
+          ## Access Analyzer lifecycle/admin blocked; read still allowed by default ceiling
+          ## -------------------------------------------------------------------
+          - Sid: DenyAccessAnalyzerAdministration
+            Effect: Deny
+            Action:
+              - access-analyzer:ApplyArchiveRule   ## block suppressing findings via archive rules
+              - access-analyzer:Create*            ## block creating analyzers and related resources
+              - access-analyzer:CreateArchiveRule  ## block explicit creation of archive rules
+              - access-analyzer:Delete*            ## block deleting analyzers and their configs
+              - access-analyzer:DeleteArchiveRule  ## block explicit deletion of archive rules
+              - access-analyzer:StartResourceScan  ## block ad-hoc scans (must be governed)
+              - access-analyzer:TagResource        ## block adding tags to analyzers
+              - access-analyzer:UntagResource      ## block removing tags from analyzers
+              - access-analyzer:Update*            ## block updates to analyzers and archive rules
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Prevent disabling GuardDuty (detector/admin/config)
+          ## -------------------------------------------------------------------
+          - Sid: DenyGuardDutyDisable
+            Effect: Deny
+            Action:
+              - guardduty:DeleteDetector                   ## prevent deletion of GuardDuty detector
+              - guardduty:DisableOrganizationAdminAccount  ## prevent disabling GuardDuty delegated org admin
+              - guardduty:UpdateDetector                   ## prevent weakening GuardDuty detector config
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Prevent disabling Inspector (service/admin)
+          ## -------------------------------------------------------------------
+          - Sid: DenyInspectorDisable
+            Effect: Deny
+            Action:
+              - inspector2:Disable                       ## prevent disabling Amazon Inspector
+              - inspector2:DisableDelegatedAdminAccount  ## prevent removing Inspector delegated admin
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Prevent disabling Security Hub (service/admin)
+          ## -------------------------------------------------------------------
+          - Sid: DenySecurityHubDisable
+            Effect: Deny
+            Action:
+              - securityhub:DisableOrganizationAdminAccount  ## prevent disabling Security Hub delegated org admin
+              - securityhub:DisableSecurityHub               ## prevent disabling Security Hub itself
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Macie disable/org admin blocked
+          ## -------------------------------------------------------------------
+          - Sid: DenyMacieDisableAndOrgAdmin
+            Effect: Deny
+            Action:
+              - macie2:DisableMacie                     ## block disabling Amazon Macie in the account
+              - macie2:DisableOrganizationAdminAccount  ## block removing/disabling Macie delegated org admin
+            Resource: "*"
+
+## -------------------------------------------------------------------------- ##
+## 6 - Allow: Security & Compliance
+
+          ## -------------------------------------------------------------------
+          ## IAM Access Analyzer: read + policy validation
+          ## -------------------------------------------------------------------
+          - Sid: AccessAnalyzerReadOnlyAndValidation
+            Effect: Allow
+            Action:
+              - access-analyzer:Get*
+              - access-analyzer:List*
+              - access-analyzer:ValidatePolicy
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Security services: read-only (Hub/GuardDuty/Inspector)
+          ## -------------------------------------------------------------------
+          - Sid: SecurityServicesReadOnly
+            Effect: Allow
+            Action:
+              - guardduty:Get*
+              - guardduty:List*
+              - inspector2:Get*
+              - inspector2:List*
+              - securityhub:Describe*
+              - securityhub:Get*
+              - securityhub:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Macie: read-only
+          ## -------------------------------------------------------------------
+          - Sid: MacieReadOnly
+            Effect: Allow
+            Action:
+              - macie2:Describe*
+              - macie2:Get*
+              - macie2:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Firewall Manager: read-only
+          ## -------------------------------------------------------------------
+          - Sid: FirewallManagerReadOnly
+            Effect: Allow
+            Action:
+              - fms:Get*
+              - fms:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Security Lake: read-only
+          ## -------------------------------------------------------------------
+          - Sid: SecurityLakeReadOnly
+            Effect: Allow
+            Action:
+              - securitylake:Get*
+              - securitylake:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Detective: read-only
+          ## -------------------------------------------------------------------
+          - Sid: DetectiveReadOnly
+            Effect: Allow
+            Action:
+              - detective:Get*
+              - detective:List*
+              - detective:Describe*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Audit Manager: read-only
+          ## -------------------------------------------------------------------
+          - Sid: AuditManagerReadOnly
+            Effect: Allow
+            Action:
+              - auditmanager:Get*
+              - auditmanager:List*
+              - auditmanager:Describe*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## EventBridge & Scheduler: read-only visibility
+          ## -------------------------------------------------------------------
+          - Sid: EventsAndSchedulerReadOnly
+            Effect: Allow
+            Action:
+              - events:Describe*
+              - events:Get*
+              - events:List*
+              - scheduler:Describe*
+              - scheduler:Get*
+              - scheduler:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## EventBridge Pipes: read-only visibility
+          ## -------------------------------------------------------------------
+          - Sid: EventBridgePipesReadOnly
+            Effect: Allow
+            Action:
+              - pipes:DescribePipe
+              - pipes:ListPipes
+              - pipes:ListTagsForResource
+            Resource: "*"
+
+## -------------------------------------------------------------------------- ##
+
+Outputs:
+
+  ManagedPolicyArn:
+    Description: "Security & Compliance managed policy's ARN"
+    Value: !Ref SecurityCompliancePolicy

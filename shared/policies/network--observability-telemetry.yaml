@@ -1,0 +1,232 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Merged IAM Managed Policy — Observability & Telemetry (deny first, then allow)"
+
+Parameters:
+
+  ManagedPolicyName:
+    Type: String
+    Default: network--observability-telemetry
+    Description: "IAM managed policy name for Observability & Telemetry"
+
+  CustomPolicyPath:
+    Type: String
+    Default: "/managed/network/"
+    AllowedPattern: "^/([A-Za-z0-9+=,.@_-]+/)*$"
+    Description: "IAM path prefix for policies (use / to disable)"
+
+Resources:
+
+  ObservabilityTelemetryPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+
+      ManagedPolicyName: !Ref ManagedPolicyName
+      Path: !Ref CustomPolicyPath
+
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+
+## -------------------------------------------------------------------------- ##
+## 3 - Deny : Observability & Telemetry
+
+          ## -------------------------------------------------------------------
+          ## AWS Config tamper prevention
+          ## -------------------------------------------------------------------
+          - Sid: DenyConfigTamper
+            Effect: Deny
+            Action:
+              - config:Delete*                          ## prevent deletion of AWS Config resources/history (broad safety net)
+              - config:DeleteConfigRule                 ## prevent removal of individual Config rules
+              - config:DeleteRemediationConfigurations  ## prevent deleting remediation configs
+              - config:PutConfigRule                    ## prevent creating/updating Config rules outside governance
+              - config:PutConfigurationRecorder         ## prevent enabling/updating the configuration recorder
+              - config:PutDeliveryChannel               ## prevent changing delivery channel (S3/KMS/SNS destinations)
+              - config:PutRemediationConfigurations     ## prevent creating/updating remediation configs outside governance
+              - config:StopConfigurationRecorder        ## prevent stopping the recorder (keeps inventory active)
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CloudTrail tamper prevention
+          ## -------------------------------------------------------------------
+          - Sid: DenyCloudTrailTamper
+            Effect: Deny
+            Action:
+              - cloudtrail:DeleteTrail        ## prevent deletion of trails
+              - cloudtrail:PutEventSelectors  ## prevent altering event selectors (filtering scope)
+              - cloudtrail:StopLogging        ## prevent disabling logging
+              - cloudtrail:UpdateTrail        ## prevent mutating trail config (destinations/KMS/etc.)
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CloudTrail Insights toggle off
+          ## -------------------------------------------------------------------
+          - Sid: DenyCloudTrailInsightsToggle
+            Effect: Deny
+            Action:
+              - cloudtrail:PutInsightSelectors  ## prevent enabling/disabling Insights
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CloudWatch Logs tamper prevention
+          ## -------------------------------------------------------------------
+          - Sid: DenyLogsTamper
+            Effect: Deny
+            Action:
+              - logs:AssociateKmsKey        ## prevent arbitrary KMS key associations
+              - logs:Delete*                ## prevent deletion of log groups/streams/exports
+              - logs:DisassociateKmsKey     ## prevent removing KMS encryption
+              - logs:PutResourcePolicy      ## prevent altering resource policies (cross-account exposure)
+              - logs:PutRetentionPolicy     ## block retention changes (governed centrally)
+              - logs:PutSubscriptionFilter  ## prevent creating cross-account/subscription exfil paths
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CloudWatch metrics/alarms tamper prevention
+          ## -------------------------------------------------------------------
+          - Sid: DenyCloudWatchAlarmTamper
+            Effect: Deny
+            Action:
+              - cloudwatch:DeleteAlarms         ## prevent deleting alarms
+              - cloudwatch:DisableAlarmActions  ## prevent disabling alarm actions
+              - cloudwatch:SetAlarmState        ## prevent forcing manual alarm state
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## X-Ray configuration tamper prevention
+          ## -------------------------------------------------------------------
+          - Sid: DenyXRayTamper
+            Effect: Deny
+            Action:
+              - xray:Delete*  ## prevent deletion of X-Ray groups/rules/config
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Keep account-level PAB enforced
+          ## -------------------------------------------------------------------
+          - Sid: DenyS3AccountPublicAccessBlockDelete
+            Effect: Deny
+            Action:
+              - s3:DeleteAccountPublicAccessBlock  ## prevent removal of the account-wide S3 PAB
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## OAM sink admin blocked
+          ## -------------------------------------------------------------------
+          - Sid: DenyOamSinkAdministration
+            Effect: Deny
+            Action:
+              - oam:CreateSink     ## prevent creating cross-account telemetry sinks
+              - oam:DeleteSink     ## prevent deleting sinks and breaking pipelines
+              - oam:PutSinkPolicy  ## prevent modifying sink resource policies
+              - oam:TagResource    ## prevent adding tags on sinks
+              - oam:UntagResource  ## prevent removing tags on sinks
+            Resource: "*"
+
+## -------------------------------------------------------------------------- ##
+## 3 - Allow: Observability & Telemetry
+
+          ## -------------------------------------------------------------------
+          ## AWS Config: read-only (no rule/recorder changes)
+          ## -------------------------------------------------------------------
+          - Sid: ConfigReadOnly
+            Effect: Allow
+            Action:
+              - config:BatchGet*   ## batch reads
+              - config:Deliver*    ## read delivery info/snapshots
+              - config:Describe*   ## describe recorder/rules
+              - config:Get*        ## get config/history
+              - config:List*       ## list resources/rules
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CloudTrail: read-only (config/status/events lookup)
+          ## -------------------------------------------------------------------
+          - Sid: CloudTrailReadOnly
+            Effect: Allow
+            Action:
+              - cloudtrail:DescribeTrails       ## list trails and settings
+              - cloudtrail:GetEventSelectors    ## read event selectors
+              - cloudtrail:GetInsightSelectors  ## read insight selectors
+              - cloudtrail:GetTrailStatus       ## read trail status
+              - cloudtrail:List*                ## list trails/queries
+              - cloudtrail:LookupEvents         ## search events
+              - cloudtrail:StartQuery           ## start a Lake SQL query
+              - cloudtrail:GetQueryResults      ## fetch results for a query
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CloudWatch Logs: read + query (no admin/policy changes)
+          ## -------------------------------------------------------------------
+          - Sid: LogsReadAndQuery
+            Effect: Allow
+            Action:
+              - logs:Describe*        ## list log groups/streams
+              - logs:Get*             ## get log events/export tasks
+              - logs:FilterLogEvents  ## on-the-fly filter query
+              - logs:StartQuery       ## start Insights query
+              - logs:GetQueryResults  ## retrieve query results
+              - logs:List*            ## list queries/log groups
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CloudWatch metrics/alarms: read-only
+          ## -------------------------------------------------------------------
+          - Sid: CloudWatchReadOnly
+            Effect: Allow
+            Action:
+              - cloudwatch:Describe*  ## describe alarms/metrics
+              - cloudwatch:Get*       ## get metrics/alarms data
+              - cloudwatch:List*      ## list dashboards/alarms
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## X-Ray: read-only (traces, service map)
+          ## -------------------------------------------------------------------
+          - Sid: XRayReadOnly
+            Effect: Allow
+            Action:
+              - xray:Get*       ## get traces/insights
+              - xray:BatchGet*  ## batch trace gets
+              - xray:List*      ## list groups/sampling rules
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Health Dashboard: read-only
+          ## -------------------------------------------------------------------
+          - Sid: HealthReadOnly
+            Effect: Allow
+            Action:
+              - health:Describe*  ## read Health events/impact
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Trusted Advisor: read-only checks
+          ## -------------------------------------------------------------------
+          - Sid: TrustedAdvisorReadOnly
+            Effect: Allow
+            Action:
+              - trustedadvisor:Describe*  ## describe TA checks
+              - trustedadvisor:List*      ## list checks/results
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## OAM: link to existing sinks; read state (sink admin denied by boundary)
+          ## -------------------------------------------------------------------
+          - Sid: ObservabilityAccessManagerLinking
+            Effect: Allow
+            Action:
+              - oam:CreateLink  ## create link to sink
+              - oam:DeleteLink  ## delete link
+              - oam:Get*        ## read OAM entities
+              - oam:List*       ## list links/sinks
+              - oam:UpdateLink  ## update link config
+            Resource: "*"
+
+## -------------------------------------------------------------------------- ##
+
+Outputs:
+
+  ManagedPolicyArn:
+    Description: "Observability & Telemetry managed policy's ARN"
+    Value: !Ref ObservabilityTelemetryPolicy

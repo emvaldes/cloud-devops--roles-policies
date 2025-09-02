@@ -1,0 +1,66 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Common Allow Policy — Development: Workflow & Deployment (CodeBuild, CodeDeploy)"
+
+Parameters:
+
+  ManagedPolicyName:
+    Type: String
+    Default: network-allow--workflow-deployment
+    Description: "IAM managed policy name for Development Workflow & Deployment allows"
+
+  CustomPolicyPath:
+    Type: String
+    Default: "/managed/network/"
+    AllowedPattern: "^/([A-Za-z0-9+=,.@_-]+/)*$"
+    Description: "IAM path prefix for policies (use / to disable)"
+
+Resources:
+
+  NetworkAllowWorkflowDeploymentPolicy:
+
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+
+      ManagedPolicyName: !Ref ManagedPolicyName
+      Path: !Ref CustomPolicyPath
+      Description: "Allow baseline for Development Workflow & Deployment (CodeBuild, CodeDeploy)."
+
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+
+## -------------------------------------------------------------------------- ##
+## 8 - Development — Workflow & Deployment
+
+          ## -------------------------------------------------------------------
+          ## CI: operate CodeBuild builds (start/stop/retry, read state)
+          ## -------------------------------------------------------------------
+          - Sid: CodeBuildOperations
+            Effect: Allow
+            Action:
+              - codebuild:BatchGet*
+              - codebuild:List*
+              - codebuild:StartBuild
+              - codebuild:StopBuild
+              - codebuild:RetryBuild
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CD: operate CodeDeploy deployments (create/stop, read state)
+          ## -------------------------------------------------------------------
+          - Sid: CodeDeployOperations
+            Effect: Allow
+            Action:
+              - codedeploy:Get*
+              - codedeploy:List*
+              - codedeploy:CreateDeployment
+              - codedeploy:StopDeployment
+            Resource: "*"
+
+## -------------------------------------------------------------------------- ##
+
+Outputs:
+
+  NetworkAllowWorkflowDeploymentPolicyArn:
+    Description: "ARN of the Development Workflow & Deployment allow IAM managed policy"
+    Value: !Ref NetworkAllowWorkflowDeploymentPolicy

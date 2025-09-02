@@ -1,0 +1,141 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Common Allow Policy — Development: Source & Orchestration (CloudFormation, CodeCommit, CodePipeline, SNS/SQS)"
+
+Parameters:
+
+  ManagedPolicyName:
+    Type: String
+    Default: network-allow--workflow-orchestration
+    Description: "IAM managed policy name for Development Source & Orchestration allows"
+
+  CustomPolicyPath:
+    Type: String
+    Default: "/managed/network/"
+    AllowedPattern: "^/([A-Za-z0-9+=,.@_-]+/)*$"
+    Description: "IAM path prefix for policies (use / to disable)"
+
+Resources:
+
+  NetworkAllowOrchestrationPolicy:
+
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+
+      ManagedPolicyName: !Ref ManagedPolicyName
+      Path: !Ref CustomPolicyPath
+      Description: "Allow baseline for Development Source & Orchestration (CloudFormation, CodeCommit, CodePipeline, SNS/SQS)."
+
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+
+## -------------------------------------------------------------------------- ##
+## 7 - Development — Source & Orchestration
+
+          ## -------------------------------------------------------------------
+          ## IaC: deploy with CloudFormation (create/update stacks & change sets)
+          ## -------------------------------------------------------------------
+          - Sid: CloudFormationDeploy
+            Effect: Allow
+            Action:
+              - cloudformation:CreateStack
+              - cloudformation:UpdateStack
+              - cloudformation:CreateChangeSet
+              - cloudformation:ExecuteChangeSet
+              - cloudformation:DeleteChangeSet
+              - cloudformation:Describe*
+              - cloudformation:Get*
+              - cloudformation:List*
+              - cloudformation:ValidateTemplate
+              - cloudformation:DetectStackDrift
+              - cloudformation:DetectStackResourceDrift
+              - cloudformation:CancelUpdateStack
+              - cloudformation:ContinueUpdateRollback
+            Resource: "*"
+
+            ## -------------------------------------------------------------------
+            ## SCM: CodeCommit read/write (Git pull/push + basic PR ops)
+            ## -------------------------------------------------------------------
+            - Sid: CodeCommitReadWrite
+              Effect: Allow
+              Action:
+                - codecommit:Get*
+                - codecommit:List*
+                - codecommit:GitPull
+                - codecommit:GitPush
+                - codecommit:CreatePullRequest
+                - codecommit:UpdatePullRequest*
+                - codecommit:MergePullRequestByFastForward
+                - codecommit:MergePullRequestBySquash
+                - codecommit:MergePullRequestByThreeWay
+              Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## CI/CD Orchestration: operate CodePipeline executions (no pipeline admin)
+          ## -------------------------------------------------------------------
+          - Sid: CodePipelineOperations
+            Effect: Allow
+            Action:
+              - codepipeline:Get*
+              - codepipeline:List*
+              - codepipeline:StartPipelineExecution
+              - codepipeline:StopPipelineExecution
+              - codepipeline:RetryStageExecution
+              - codepipeline:PutApprovalResult
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Messaging — SNS publish/read
+          ## -------------------------------------------------------------------
+          - Sid: SnsPublishAndRead
+            Effect: Allow
+            Action:
+              - sns:Publish
+              - sns:Get*
+              - sns:List*
+              - sns:ConfirmSubscription
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Messaging — SNS minimal writes (scoped to network-*)
+          ## -------------------------------------------------------------------
+          - Sid: SnsOpsMinimalWrites
+            Effect: Allow
+            Action:
+              - sns:Subscribe
+              - sns:Unsubscribe
+            Resource:
+              - arn:aws:sns:*:*:network-*
+              - arn:aws:sns:*:*:network-*:*
+
+          ## -------------------------------------------------------------------
+          ## Messaging — SQS consume/read
+          ## -------------------------------------------------------------------
+          - Sid: SqsConsumeAndRead
+            Effect: Allow
+            Action:
+              - sqs:ReceiveMessage
+              - sqs:SendMessage
+              - sqs:GetQueueAttributes
+              - sqs:GetQueueUrl
+              - sqs:ListQueues
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Messaging — SQS minimal writes (scoped to network-*)
+          ## -------------------------------------------------------------------
+          - Sid: SqsOpsMinimalWrites
+            Effect: Allow
+            Action:
+              - sqs:DeleteMessage
+              - sqs:ChangeMessageVisibility
+            Resource:
+              - arn:aws:sqs:*:*:network-*
+
+## -------------------------------------------------------------------------- ##
+
+Outputs:
+
+  NetworkAllowOrchestrationPolicyArn:
+    Description: "ARN of the Development Source & Orchestration allow IAM managed policy"
+    Value: !Ref NetworkAllowOrchestrationPolicy

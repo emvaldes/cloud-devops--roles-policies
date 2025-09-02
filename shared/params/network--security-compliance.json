@@ -1,0 +1,4 @@
+[
+  { "ParameterKey": "ManagedPolicyName", "ParameterValue": "network--security-compliance" },
+  { "ParameterKey": "CustomPolicyPath",  "ParameterValue": "/managed/network/" }
+]

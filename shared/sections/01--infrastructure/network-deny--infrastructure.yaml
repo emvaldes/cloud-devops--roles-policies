@@ -138,19 +138,6 @@ Resources:
                   - vpc-lattice.amazonaws.com           ## VPC Lattice
 
           ## -------------------------------------------------------------------
-          ## IAM Access Analyzer: policy validation + CloudTrail-based generation
-          ## -------------------------------------------------------------------
-          - Sid: AccessAnalyzerPolicyGeneration
-            Effect: Allow
-            Action:
-              - access-analyzer:ValidatePolicy          ## REQUIRED: static policy checks (finds missing actions, wildcards, cross-account)
-              - access-analyzer:StartPolicyGeneration   ## REQUIRED: start CloudTrail-based policy generation job
-              - access-analyzer:GetGeneratedPolicy      ## REQUIRED: fetch the generated policy document/result JSON
-              - access-analyzer:CancelPolicyGeneration  ## OPTIONAL: cancel a running generation job
-              - access-analyzer:ListPolicyGenerations   ## OPTIONAL: enumerate prior generation jobs (for status/history)
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
           ## KMS administration blocked (key/alias/grant/policy)
           ## -------------------------------------------------------------------
           - Sid: DenyKmsKeyAdministration

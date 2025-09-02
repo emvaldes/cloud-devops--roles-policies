@@ -1,0 +1,145 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Common Allow Policy — Security & Compliance (Access Analyzer, Security Hub/GuardDuty/Inspector, Macie, FMS, Security Lake, Detective, Audit Manager, Events/Scheduler/Pipes — read-only)"
+
+Parameters:
+
+  ManagedPolicyName:
+    Type: String
+    Default: network-allow--security-compliance
+    Description: "IAM managed policy name for Security & Compliance allows"
+
+  CustomPolicyPath:
+    Type: String
+    Default: "/managed/network/"
+    AllowedPattern: "^/([A-Za-z0-9+=,.@_-]+/)*$"
+    Description: "IAM path prefix for policies (use / to disable)"
+
+Resources:
+
+  NetworkAllowSecurityCompliancePolicy:
+
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+
+      ManagedPolicyName: !Ref ManagedPolicyName
+      Path: !Ref CustomPolicyPath
+      Description: "Allow baseline for Security & Compliance services (Access Analyzer validation, Security Hub/GuardDuty/Inspector read, Macie read, FMS read, Security Lake read, Detective read, Audit Manager read, EventBridge/Scheduler/Pipes read)."
+
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+
+## -------------------------------------------------------------------------- ##
+## 6 - Security & Compliance
+
+          ## -------------------------------------------------------------------
+          ## IAM Access Analyzer: read + policy validation
+          ## -------------------------------------------------------------------
+          - Sid: AccessAnalyzerReadOnlyAndValidation
+            Effect: Allow
+            Action:
+              - access-analyzer:Get*
+              - access-analyzer:List*
+              - access-analyzer:ValidatePolicy
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Security services: read-only (Hub/GuardDuty/Inspector)
+          ## -------------------------------------------------------------------
+          - Sid: SecurityServicesReadOnly
+            Effect: Allow
+            Action:
+              - guardduty:Get*
+              - guardduty:List*
+              - inspector2:Get*
+              - inspector2:List*
+              - securityhub:Describe*
+              - securityhub:Get*
+              - securityhub:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Macie: read-only
+          ## -------------------------------------------------------------------
+          - Sid: MacieReadOnly
+            Effect: Allow
+            Action:
+              - macie2:Describe*
+              - macie2:Get*
+              - macie2:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Firewall Manager: read-only
+          ## -------------------------------------------------------------------
+          - Sid: FirewallManagerReadOnly
+            Effect: Allow
+            Action:
+              - fms:Get*
+              - fms:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Security Lake: read-only
+          ## -------------------------------------------------------------------
+          - Sid: SecurityLakeReadOnly
+            Effect: Allow
+            Action:
+              - securitylake:Get*
+              - securitylake:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Detective: read-only
+          ## -------------------------------------------------------------------
+          - Sid: DetectiveReadOnly
+            Effect: Allow
+            Action:
+              - detective:Get*
+              - detective:List*
+              - detective:Describe*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Audit Manager: read-only
+          ## -------------------------------------------------------------------
+          - Sid: AuditManagerReadOnly
+            Effect: Allow
+            Action:
+              - auditmanager:Get*
+              - auditmanager:List*
+              - auditmanager:Describe*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## EventBridge & Scheduler: read-only visibility
+          ## -------------------------------------------------------------------
+          - Sid: EventsAndSchedulerReadOnly
+            Effect: Allow
+            Action:
+              - events:Describe*
+              - events:Get*
+              - events:List*
+              - scheduler:Describe*
+              - scheduler:Get*
+              - scheduler:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## EventBridge Pipes: read-only visibility
+          ## -------------------------------------------------------------------
+          - Sid: EventBridgePipesReadOnly
+            Effect: Allow
+            Action:
+              - pipes:DescribePipe
+              - pipes:ListPipes
+              - pipes:ListTagsForResource
+            Resource: "*"
+
+## -------------------------------------------------------------------------- ##
+
+Outputs:
+
+  NetworkAllowSecurityCompliancePolicyArn:
+    Description: "ARN of the Security & Compliance allow IAM managed policy"
+    Value: !Ref NetworkAllowSecurityCompliancePolicy

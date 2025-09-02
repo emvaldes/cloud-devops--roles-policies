@@ -319,74 +319,8 @@
               - oam:UpdateLink  ## update link config
             Resource: "*"
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ---------------------------------------------------------------------------- #
-
-          ## -------------------------------------------------------------------
-          ## Secrets Manager: read-only (value + metadata)
-          ## -------------------------------------------------------------------
-          - Sid: SecretsManagerRead
-            Effect: Allow
-            Action:
-              - secretsmanager:GetSecretValue        ## read secret value
-              - secretsmanager:DescribeSecret        ## read secret metadata
-              - secretsmanager:ListSecrets           ## list secrets
-            Resource: "*"
+## -------------------------------------------------------------------------- ##
+## 4 - Systems Management
 
           ## -------------------------------------------------------------------
           ## SSM: sessions/RunCommand (tag-gated), docs/params, minimal Automation
@@ -477,6 +411,64 @@
               - ssm:DescribeAutomationStepExecutions  ## list steps within an execution
               - ssm:ListAutomationExecutions          ## alternate listing API
             Resource: "*"
+## -------------------------------------------------------------------------- ##
+## 5 - Networking Services
+
+          ## -------------------------------------------------------------------
+          ## Secrets Manager: read-only (value + metadata)
+          ## -------------------------------------------------------------------
+          - Sid: SecretsManagerRead
+            Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue        ## read secret value
+              - secretsmanager:DescribeSecret        ## read secret metadata
+              - secretsmanager:ListSecrets           ## list secrets
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Core networking admin across services (broad control plane)
+          ## -------------------------------------------------------------------
+          - Sid: NetworkingAdmin
+            Effect: Allow
+            Action:
+              - ec2:*                   ## all EC2 (VPC/Subnets/NACLs/IGWs/TGW/etc.)
+              - elasticloadbalancing:*  ## all ELB/ALB/NLB
+              - globalaccelerator:*     ## all GA
+              - network-firewall:*      ## all AWS Network Firewall
+              - networkmanager:*        ## all Network Manager
+              - route53resolver:*       ## all Route 53 Resolver
+              - vpc-lattice:*           ## all VPC Lattice
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Route 53 + ARC: full admin (authoritative DNS, domains, ARC)
+          ## -------------------------------------------------------------------
+          - Sid: Route53AndARCAdmin
+            Effect: Allow
+            Action:
+              - route53:*                          ## all hosted zones/records
+              - route53profiles:*                  ## Route 53 Profiles
+              - route53-recovery-control-config:*  ## ARC routing controls config
+              - route53-recovery-readiness:*       ## ARC readiness checks
+              - route53-recovery-cluster:*         ## ARC cluster APIs
+              - arc-zonal-shift:*                  ## Zonal shift controls
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Route53 Domains (registrar): read-only visibility
+          ## -------------------------------------------------------------------
+          - Sid: Route53DomainsReadOnly
+            Effect: Allow
+            Action:
+              - route53domains:ListDomains              ## list registered domains
+              - route53domains:GetDomainDetail          ## read domain contacts/DNS/privacy
+              - route53domains:ListOperations           ## list registrar ops history
+              - route53domains:GetOperationDetail       ## read specific op detail
+              - route53domains:ListTagsForDomain        ## read domain tags
+              - route53domains:ListPrices               ## read pricing
+              - route53domains:CheckDomainAvailability  ## availability checks
+              - route53domains:GetDomainSuggestions     ## suggestions
+            Resource: "*"
 
           ## -------------------------------------------------------------------
           ## Direct Connect: discovery only (no lifecycle)
@@ -484,8 +476,8 @@
           - Sid: DirectConnectReadOnly
             Effect: Allow
             Action:
-              - directconnect:Describe*      ## read DX connections/virtual interfaces
-              - directconnect:List*          ## list resources
+              - directconnect:Describe*       ## read DX connections/virtual interfaces
+              - directconnect:List*           ## list resources
               - directconnect:ViewConnections ## legacy read view
             Resource: "*"
 
@@ -521,15 +513,158 @@
                   - networkmanager        ## global networks, sites, TGW/R53 integrations
                   - ram                   ## resource shares, associations, permissions
 
+## -------------------------------------------------------------------------- ##
+## 5 - Networking Services
+
+          ## -------------------------------------------------------------------
+          ## Secrets Manager: read-only (value + metadata)
+          ## -------------------------------------------------------------------
+          - Sid: SecretsManagerRead
+            Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue        ## read secret value
+              - secretsmanager:DescribeSecret        ## read secret metadata
+              - secretsmanager:ListSecrets           ## list secrets
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Direct Connect: discovery only (no lifecycle)
+          ## -------------------------------------------------------------------
+          - Sid: DirectConnectReadOnly
+            Effect: Allow
+            Action:
+              - directconnect:Describe*       ## read DX connections/virtual interfaces
+              - directconnect:List*           ## list resources
+              - directconnect:ViewConnections ## legacy read view
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Service Quotas: read everything (safe)
+          ## -------------------------------------------------------------------
+          - Sid: ServiceQuotasRead
+            Effect: Allow
+            Action:
+              - servicequotas:Get*   ## read quota values, defaults, templates, and individual requests
+              - servicequotas:List*  ## list services, quotas, change requests, and template entries
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Service Quotas: network-scoped requests + template mgmt (covers VPC endpoints, NAT GWs, RTs, SGs, etc.)
+          ## -------------------------------------------------------------------
+          - Sid: ServiceQuotasNetworkRequestsFull
+            Effect: Allow
+            Action:
+              - servicequotas:RequestServiceQuotaIncrease                ## file increase requests
+              - servicequotas:PutServiceQuotaIncreaseRequestIntoTemplate ## manage quota template entries
+              - servicequotas:DeleteServiceQuotaIncreaseRequestFromTemplate
+              - servicequotas:TagResource
+              - servicequotas:UntagResource
+            Resource: "*"
+            Condition:
+              StringEquals:
+                servicequotas:service:
+                  - ec2                   ## VPCs, subnets, RTs, NAT, ENIs, SGs, **VPC endpoints**, etc.
+                  - vpc                   ## some VPC quotas surface under this code in some regions
+                  - elasticloadbalancing  ## ALB/NLB counts, listeners, target groups, rules
+                  - route53               ## hosted zones, health checks, traffic policies
+                  - route53resolver       ## inbound/outbound endpoints, rules, IPs per endpoint
+                  - directconnect         ## connections, LAGs, VIFs
+                  - globalaccelerator     ## accelerators, listeners, endpoint groups
+                  - network-firewall      ## firewalls, policies, rule groups
+                  - vpc-lattice           ## service networks, services, auth policies, targets
+                  - networkmanager        ## global networks, sites, TGW/R53 integrations
+                  - ram                   ## resource shares, associations, permissions
+
+          ## -------------------------------------------------------------------
+          ## Service Quotas: organization-wide quota template toggle (OPTIONAL)
+          ## Remove this block if template toggles should be centralized elsewhere.
+          ## -------------------------------------------------------------------
+          - Sid: ServiceQuotasTemplateToggle
+            Effect: Allow
+            Action:
+              - servicequotas:AssociateServiceQuotaTemplate
+              - servicequotas:DisassociateServiceQuotaTemplate
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Core networking admin across services (broad control plane)
+          ## -------------------------------------------------------------------
+          - Sid: NetworkingAdmin
+            Effect: Allow
+            Action:
+              - ec2:*                   ## all EC2 (VPC/Subnets/NACLs/IGWs/TGW/etc.)
+              - elasticloadbalancing:*  ## all ELB/ALB/NLB
+              - globalaccelerator:*     ## all GA
+              - network-firewall:*      ## all AWS Network Firewall
+              - networkmanager:*        ## all Network Manager
+              - route53resolver:*       ## all Route 53 Resolver
+              - vpc-lattice:*           ## all VPC Lattice
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Route 53 + ARC: full admin (authoritative DNS, domains, ARC)
+          ## -------------------------------------------------------------------
+          - Sid: Route53AndARCAdmin
+            Effect: Allow
+            Action:
+              - route53:*                          ## all hosted zones/records
+              - route53profiles:*                  ## Route 53 Profiles
+              - route53-recovery-control-config:*  ## ARC routing controls config
+              - route53-recovery-readiness:*       ## ARC readiness checks
+              - route53-recovery-cluster:*         ## ARC cluster APIs
+              - arc-zonal-shift:*                  ## Zonal shift controls
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Route53 Domains (registrar): read-only visibility
+          ## -------------------------------------------------------------------
+          - Sid: Route53DomainsReadOnly
+            Effect: Allow
+            Action:
+              - route53domains:ListDomains              ## list registered domains
+              - route53domains:GetDomainDetail          ## read domain contacts/DNS/privacy
+              - route53domains:ListOperations           ## list registrar ops history
+              - route53domains:GetOperationDetail       ## read specific op detail
+              - route53domains:ListTagsForDomain        ## read domain tags
+              - route53domains:ListPrices               ## read pricing
+              - route53domains:CheckDomainAvailability  ## availability checks
+              - route53domains:GetDomainSuggestions     ## suggestions
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Edge protection (WAFv2/Shield): read-only
+          ## -------------------------------------------------------------------
+          - Sid: EdgeProtectionReadOnly
+            Effect: Allow
+            Action:
+              - wafv2:Get*        ## get web ACLs/resources
+              - wafv2:List*       ## list web ACLs/resources
+              - shield:Describe*  ## read Shield protections/events
+              - shield:List*      ## list protections
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Internet Monitor & VPC Network Monitor: admin
+          ## -------------------------------------------------------------------
+          - Sid: InternetAndNetworkMonitorAdmin
+            Effect: Allow
+            Action:
+              - internetmonitor:*  ## manage Internet Monitor
+              - networkmonitor:*   ## manage VPC Network Monitor
+            Resource: "*"
+
+## -------------------------------------------------------------------------- ##
+## 6 - Security & Compliance
+
           ## -------------------------------------------------------------------
           ## IAM Access Analyzer: read + policy validation
           ## -------------------------------------------------------------------
           - Sid: AccessAnalyzerReadOnlyAndValidation
             Effect: Allow
             Action:
-              - access-analyzer:Get*            ## read analyzers/findings
-              - access-analyzer:List*           ## list analyzers/findings
-              - access-analyzer:ValidatePolicy  ## validate JSON policy
+              - access-analyzer:Get*
+              - access-analyzer:List*
+              - access-analyzer:ValidatePolicy
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -538,13 +673,13 @@
           - Sid: SecurityServicesReadOnly
             Effect: Allow
             Action:
-              - guardduty:Get*         ## read GuardDuty
-              - guardduty:List*        ## list detectors/findings
-              - inspector2:Get*        ## read Inspector
-              - inspector2:List*       ## list findings/coverage
-              - securityhub:Describe*  ## read Security Hub
-              - securityhub:Get*       ## get findings/insights
-              - securityhub:List*      ## list products/members/findings
+              - guardduty:Get*
+              - guardduty:List*
+              - inspector2:Get*
+              - inspector2:List*
+              - securityhub:Describe*
+              - securityhub:Get*
+              - securityhub:List*
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -553,10 +688,80 @@
           - Sid: MacieReadOnly
             Effect: Allow
             Action:
-              - macie2:Describe*  ## describe Macie setup
-              - macie2:Get*       ## get findings/classification
-              - macie2:List*      ## list jobs/findings
+              - macie2:Describe*
+              - macie2:Get*
+              - macie2:List*
             Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Firewall Manager: read-only
+          ## -------------------------------------------------------------------
+          - Sid: FirewallManagerReadOnly
+            Effect: Allow
+            Action:
+              - fms:Get*
+              - fms:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Security Lake: read-only
+          ## -------------------------------------------------------------------
+          - Sid: SecurityLakeReadOnly
+            Effect: Allow
+            Action:
+              - securitylake:Get*
+              - securitylake:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## Amazon Detective: read-only
+          ## -------------------------------------------------------------------
+          - Sid: DetectiveReadOnly
+            Effect: Allow
+            Action:
+              - detective:Get*
+              - detective:List*
+              - detective:Describe*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## AWS Audit Manager: read-only
+          ## -------------------------------------------------------------------
+          - Sid: AuditManagerReadOnly
+            Effect: Allow
+            Action:
+              - auditmanager:Get*
+              - auditmanager:List*
+              - auditmanager:Describe*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## EventBridge & Scheduler: read-only visibility
+          ## -------------------------------------------------------------------
+          - Sid: EventsAndSchedulerReadOnly
+            Effect: Allow
+            Action:
+              - events:Describe*
+              - events:Get*
+              - events:List*
+              - scheduler:Describe*
+              - scheduler:Get*
+              - scheduler:List*
+            Resource: "*"
+
+          ## -------------------------------------------------------------------
+          ## EventBridge Pipes: read-only visibility
+          ## -------------------------------------------------------------------
+          - Sid: EventBridgePipesReadOnly
+            Effect: Allow
+            Action:
+              - pipes:DescribePipe
+              - pipes:ListPipes
+              - pipes:ListTagsForResource
+            Resource: "*"
+
+## -------------------------------------------------------------------------- ##
+## 7 - Development — Source & Orchestration
 
           ## -------------------------------------------------------------------
           ## IaC: deploy with CloudFormation (create/update stacks & change sets)
@@ -564,78 +769,50 @@
           - Sid: CloudFormationDeploy
             Effect: Allow
             Action:
-              - cloudformation:CreateStack               ## create stacks from templates/params
-              - cloudformation:UpdateStack               ## update existing stacks
-              - cloudformation:CreateChangeSet           ## stage changes as a change set
-              - cloudformation:ExecuteChangeSet          ## apply a staged change set
-              - cloudformation:DeleteChangeSet           ## remove unused change sets
-              - cloudformation:Describe*                 ## read stacks/changes/events
-              - cloudformation:Get*                      ## fetch templates/stackpolicy
-              - cloudformation:List*                     ## list stacks/changes/exports
-              - cloudformation:ValidateTemplate          ## pre-validate a template
-              - cloudformation:DetectStackDrift          ## run drift detection
-              - cloudformation:DetectStackResourceDrift  ## resource-level drift
-              - cloudformation:CancelUpdateStack         ## cancel an in-flight update
-              - cloudformation:ContinueUpdateRollback    ## resume failed rollback
+              - cloudformation:CreateStack
+              - cloudformation:UpdateStack
+              - cloudformation:CreateChangeSet
+              - cloudformation:ExecuteChangeSet
+              - cloudformation:DeleteChangeSet
+              - cloudformation:Describe*
+              - cloudformation:Get*
+              - cloudformation:List*
+              - cloudformation:ValidateTemplate
+              - cloudformation:DetectStackDrift
+              - cloudformation:DetectStackResourceDrift
+              - cloudformation:CancelUpdateStack
+              - cloudformation:ContinueUpdateRollback
             Resource: "*"
 
             ## -------------------------------------------------------------------
             ## SCM: CodeCommit read/write (Git pull/push + basic PR ops)
-            ## Purpose: enable engineers to clone/fetch, push commits/refs, and
-            ## manage pull requests for network infra repos. No repo/admin here
-            ## (no create/delete repo, policies, approvals config, triggers).
             ## -------------------------------------------------------------------
             - Sid: CodeCommitReadWrite
               Effect: Allow
               Action:
-                - codecommit:Get*                           ## view repo/branch/PR metadata
-                - codecommit:List*                          ## list repos/branches/PRs/commits
-                - codecommit:GitPull                        ## clone/fetch via Git
-                - codecommit:GitPush                        ## push commits/refs via Git
-                - codecommit:CreatePullRequest              ## open PRs
-                - codecommit:UpdatePullRequest*             ## edit PR title/desc/targets/state
-                - codecommit:MergePullRequestByFastForward  ## merge (fast-forward)
-                - codecommit:MergePullRequestBySquash       ## merge (squash)
-                - codecommit:MergePullRequestByThreeWay     ## merge (3-way)
+                - codecommit:Get*
+                - codecommit:List*
+                - codecommit:GitPull
+                - codecommit:GitPush
+                - codecommit:CreatePullRequest
+                - codecommit:UpdatePullRequest*
+                - codecommit:MergePullRequestByFastForward
+                - codecommit:MergePullRequestBySquash
+                - codecommit:MergePullRequestByThreeWay
               Resource: "*"
 
           ## -------------------------------------------------------------------
-          ## CI/CD: operate CodePipeline executions (start/stop/retry, approvals)
+          ## CI/CD Orchestration: operate CodePipeline executions (no pipeline admin)
           ## -------------------------------------------------------------------
           - Sid: CodePipelineOperations
             Effect: Allow
             Action:
-              - codepipeline:Get*                    ## read pipeline state/executions/artifacts
-              - codepipeline:List*                   ## list pipelines/executions
-              - codepipeline:StartPipelineExecution  ## start a pipeline run
-              - codepipeline:StopPipelineExecution   ## stop/cancel a run
-              - codepipeline:RetryStageExecution     ## retry a failed stage
-              - codepipeline:PutApprovalResult       ## approve/reject manual approval
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CI: operate CodeBuild builds (start/stop/retry, read state)
-          ## -------------------------------------------------------------------
-          - Sid: CodeBuildOperations
-            Effect: Allow
-            Action:
-              - codebuild:BatchGet*   ## read build details/logs
-              - codebuild:List*       ## list projects/builds
-              - codebuild:StartBuild  ## kick off a build
-              - codebuild:StopBuild   ## stop a running build
-              - codebuild:RetryBuild  ## retry a failed build
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CD: operate CodeDeploy deployments (create/stop, read state)
-          ## -------------------------------------------------------------------
-          - Sid: CodeDeployOperations
-            Effect: Allow
-            Action:
-              - codedeploy:Get*              ## read apps/deployments/status
-              - codedeploy:List*             ## enumerate apps/deployments
-              - codedeploy:CreateDeployment  ## trigger a deployment
-              - codedeploy:StopDeployment    ## stop/rollback a deployment
+              - codepipeline:Get*
+              - codepipeline:List*
+              - codepipeline:StartPipelineExecution
+              - codepipeline:StopPipelineExecution
+              - codepipeline:RetryStageExecution
+              - codepipeline:PutApprovalResult
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -686,138 +863,32 @@
             Resource:
               - arn:aws:sqs:*:*:network-*
 
+## -------------------------------------------------------------------------- ##
+## 8 - Development — Workflow & Deployment
+
           ## -------------------------------------------------------------------
-          ## Core networking admin across services (broad control plane)
+          ## CI: operate CodeBuild builds (start/stop/retry, read state)
           ## -------------------------------------------------------------------
-          - Sid: NetworkingAdmin
+          - Sid: CodeBuildOperations
             Effect: Allow
             Action:
-              - ec2:*                   ## all EC2 (VPC/Subnets/NACLs/IGWs/TGW/etc.)
-              - elasticloadbalancing:*  ## all ELB/ALB/NLB
-              - globalaccelerator:*     ## all GA
-              - network-firewall:*      ## all AWS Network Firewall
-              - networkmanager:*        ## all Network Manager
-              - route53resolver:*       ## all Route 53 Resolver
-              - vpc-lattice:*           ## all VPC Lattice
+              - codebuild:BatchGet*
+              - codebuild:List*
+              - codebuild:StartBuild
+              - codebuild:StopBuild
+              - codebuild:RetryBuild
             Resource: "*"
 
           ## -------------------------------------------------------------------
-          ## Route 53 + ARC: full admin (authoritative DNS, domains, ARC)
+          ## CD: operate CodeDeploy deployments (create/stop, read state)
           ## -------------------------------------------------------------------
-          - Sid: Route53AndARCAdmin
+          - Sid: CodeDeployOperations
             Effect: Allow
             Action:
-              - route53:*                          ## all hosted zones/records
-              - route53profiles:*                  ## Route 53 Profiles
-              - route53-recovery-control-config:*  ## ARC routing controls config
-              - route53-recovery-readiness:*       ## ARC readiness checks
-              - route53-recovery-cluster:*         ## ARC cluster APIs
-              - arc-zonal-shift:*                  ## Zonal shift controls
+              - codedeploy:Get*
+              - codedeploy:List*
+              - codedeploy:CreateDeployment
+              - codedeploy:StopDeployment
             Resource: "*"
 
-          ## -------------------------------------------------------------------
-          ## Route53 Domains (registrar): read-only visibility
-          ## -------------------------------------------------------------------
-          - Sid: Route53DomainsReadOnly
-            Effect: Allow
-            Action:
-              - route53domains:ListDomains              ## list registered domains
-              - route53domains:GetDomainDetail          ## read domain contacts/DNS/privacy
-              - route53domains:ListOperations           ## list registrar ops history
-              - route53domains:GetOperationDetail       ## read specific op detail
-              - route53domains:ListTagsForDomain        ## read domain tags
-              - route53domains:ListPrices               ## read pricing
-              - route53domains:CheckDomainAvailability  ## availability checks
-              - route53domains:GetDomainSuggestions     ## suggestions
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## AWS Firewall Manager: read-only
-          ## -------------------------------------------------------------------
-          - Sid: FirewallManagerReadOnly
-            Effect: Allow
-            Action:
-              - fms:Get*   ## read policies/resources
-              - fms:List*  ## list policies/member accts
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## Edge protection (WAFv2/Shield): read-only
-          ## -------------------------------------------------------------------
-          - Sid: EdgeProtectionReadOnly
-            Effect: Allow
-            Action:
-              - wafv2:Get*        ## get web ACLs/resources
-              - wafv2:List*       ## list web ACLs/resources
-              - shield:Describe*  ## read Shield protections/events
-              - shield:List*      ## list protections
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## Internet Monitor & VPC Network Monitor: admin
-          ## -------------------------------------------------------------------
-          - Sid: InternetAndNetworkMonitorAdmin
-            Effect: Allow
-            Action:
-              - internetmonitor:*  ## manage Internet Monitor
-              - networkmonitor:*   ## manage VPC Network Monitor
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## Amazon Security Lake: read-only
-          ## -------------------------------------------------------------------
-          - Sid: SecurityLakeReadOnly
-            Effect: Allow
-            Action:
-              - securitylake:Get*   ## read lakes/subscribers
-              - securitylake:List*  ## list sources/subscribers
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## Amazon Detective: read-only
-          ## -------------------------------------------------------------------
-          - Sid: DetectiveReadOnly
-            Effect: Allow
-            Action:
-              - detective:Get*       ## get Detective entities
-              - detective:List*      ## list graphs/members
-              - detective:Describe*  ## describe graphs/resources
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## AWS Audit Manager: read-only
-          ## -------------------------------------------------------------------
-          - Sid: AuditManagerReadOnly
-            Effect: Allow
-            Action:
-              - auditmanager:Get*       ## get assessments/evidence
-              - auditmanager:List*      ## list assessments/evidence
-              - auditmanager:Describe*  ## describe frameworks/settings
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## EventBridge & Scheduler: read-only visibility
-          ## -------------------------------------------------------------------
-          - Sid: EventsAndSchedulerReadOnly
-            Effect: Allow
-            Action:
-              - events:Describe*     ## read rules/targets/buses
-              - events:Get*          ## get rule/targets/policy
-              - events:List*         ## list rules/buses/targets
-              - scheduler:Describe*  ## read schedules
-              - scheduler:Get*       ## get schedule details
-              - scheduler:List*      ## list schedules/groups
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## EventBridge Pipes: read-only visibility
-          ## -------------------------------------------------------------------
-          - Sid: EventBridgePipesReadOnly
-            Effect: Allow
-            Action:
-              - pipes:DescribePipe         ## read pipe definition
-              - pipes:ListPipes            ## list pipes
-              - pipes:ListTagsForResource  ## read pipe tags
-            Resource: "*"
-
-# ---------------------------------------------------------------------------- #
+## -------------------------------------------------------------------------- ##
