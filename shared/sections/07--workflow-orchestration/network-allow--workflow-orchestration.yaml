@@ -53,22 +53,22 @@ Resources:
               - cloudformation:ContinueUpdateRollback    ## resume a failed rollback to completion
             Resource: "*"
 
-            ## -------------------------------------------------------------------
-            ## SCM: CodeCommit read/write (Git pull/push + basic PR ops)
-            ## -------------------------------------------------------------------
-            - Sid: CodeCommitReadWrite
-              Effect: Allow
-              Action:
-                - codecommit:Get*                           ## read repo/branch/commit/PR metadata
-                - codecommit:List*                          ## list repos/branches/commits/PRs
-                - codecommit:GitPull                        ## clone/fetch via Git
-                - codecommit:GitPush                        ## push commits/refs via Git
-                - codecommit:CreatePullRequest              ## open a pull request
-                - codecommit:UpdatePullRequest*             ## edit PR title/desc/targets/state
-                - codecommit:MergePullRequestByFastForward  ## merge PR (fast-forward)
-                - codecommit:MergePullRequestBySquash       ## merge PR (squash)
-                - codecommit:MergePullRequestByThreeWay     ## merge PR (3-way)
-              Resource: "*"
+          ## -------------------------------------------------------------------
+          ## SCM: CodeCommit read/write (Git pull/push + basic PR ops)
+          ## -------------------------------------------------------------------
+          - Sid: CodeCommitReadWrite
+            Effect: Allow
+            Action:
+              - codecommit:Get*                           ## read repo/branch/commit/PR metadata
+              - codecommit:List*                          ## list repos/branches/commits/PRs
+              - codecommit:GitPull                        ## clone/fetch via Git
+              - codecommit:GitPush                        ## push commits/refs via Git
+              - codecommit:CreatePullRequest              ## open a pull request
+              - codecommit:UpdatePullRequest*             ## edit PR title/desc/targets/state
+              - codecommit:MergePullRequestByFastForward  ## merge PR (fast-forward)
+              - codecommit:MergePullRequestBySquash       ## merge PR (squash)
+              - codecommit:MergePullRequestByThreeWay     ## merge PR (3-way)
+            Resource: "*"
 
           ## -------------------------------------------------------------------
           ## CI/CD Orchestration: operate CodePipeline executions (no pipeline admin)
