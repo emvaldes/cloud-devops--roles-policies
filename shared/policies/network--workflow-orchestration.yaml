@@ -101,37 +101,37 @@ Resources:
           - Sid: CloudFormationDeploy
             Effect: Allow
             Action:
-              - cloudformation:CreateStack
-              - cloudformation:UpdateStack
-              - cloudformation:CreateChangeSet
-              - cloudformation:ExecuteChangeSet
-              - cloudformation:DeleteChangeSet
-              - cloudformation:Describe*
-              - cloudformation:Get*
-              - cloudformation:List*
-              - cloudformation:ValidateTemplate
-              - cloudformation:DetectStackDrift
-              - cloudformation:DetectStackResourceDrift
-              - cloudformation:CancelUpdateStack
-              - cloudformation:ContinueUpdateRollback
+              - cloudformation:CreateStack               ## create new stack from a template/params
+              - cloudformation:UpdateStack               ## update an existing stack
+              - cloudformation:CreateChangeSet           ## stage a set of changes for review/approval
+              - cloudformation:ExecuteChangeSet          ## apply a previously created change set
+              - cloudformation:DeleteChangeSet           ## remove an unused change set
+              - cloudformation:Describe*                 ## read stacks/changes/events/status
+              - cloudformation:Get*                      ## fetch templates/stack policy/outputs
+              - cloudformation:List*                     ## enumerate stacks, change sets, exports
+              - cloudformation:ValidateTemplate          ## schema/structural validation of a template
+              - cloudformation:DetectStackDrift          ## detect drift at the stack level
+              - cloudformation:DetectStackResourceDrift  ## detect drift at individual resources
+              - cloudformation:CancelUpdateStack         ## cancel an in-flight update
+              - cloudformation:ContinueUpdateRollback    ## resume a failed rollback to completion
             Resource: "*"
 
-          ## -------------------------------------------------------------------
-          ## SCM: CodeCommit read/write (Git pull/push + basic PR ops)
-          ## -------------------------------------------------------------------
-          - Sid: CodeCommitReadWrite
-            Effect: Allow
-            Action:
-              - codecommit:Get*
-              - codecommit:List*
-              - codecommit:GitPull
-              - codecommit:GitPush
-              - codecommit:CreatePullRequest
-              - codecommit:UpdatePullRequest*
-              - codecommit:MergePullRequestByFastForward
-              - codecommit:MergePullRequestBySquash
-              - codecommit:MergePullRequestByThreeWay
-            Resource: "*"
+            ## -------------------------------------------------------------------
+            ## SCM: CodeCommit read/write (Git pull/push + basic PR ops)
+            ## -------------------------------------------------------------------
+            - Sid: CodeCommitReadWrite
+              Effect: Allow
+              Action:
+                - codecommit:Get*                           ## read repo/branch/commit/PR metadata
+                - codecommit:List*                          ## list repos/branches/commits/PRs
+                - codecommit:GitPull                        ## clone/fetch via Git
+                - codecommit:GitPush                        ## push commits/refs via Git
+                - codecommit:CreatePullRequest              ## open a pull request
+                - codecommit:UpdatePullRequest*             ## edit PR title/desc/targets/state
+                - codecommit:MergePullRequestByFastForward  ## merge PR (fast-forward)
+                - codecommit:MergePullRequestBySquash       ## merge PR (squash)
+                - codecommit:MergePullRequestByThreeWay     ## merge PR (3-way)
+              Resource: "*"
 
           ## -------------------------------------------------------------------
           ## CI/CD Orchestration: operate CodePipeline executions (no pipeline admin)
@@ -139,12 +139,12 @@ Resources:
           - Sid: CodePipelineOperations
             Effect: Allow
             Action:
-              - codepipeline:Get*
-              - codepipeline:List*
-              - codepipeline:StartPipelineExecution
-              - codepipeline:StopPipelineExecution
-              - codepipeline:RetryStageExecution
-              - codepipeline:PutApprovalResult
+              - codepipeline:Get*                    ## read pipeline state/executions/artifacts
+              - codepipeline:List*                   ## enumerate pipelines/executions
+              - codepipeline:StartPipelineExecution  ## start a pipeline run
+              - codepipeline:StopPipelineExecution   ## stop/cancel a running execution
+              - codepipeline:RetryStageExecution     ## retry a failed stage
+              - codepipeline:PutApprovalResult       ## approve/reject a manual approval action
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -153,10 +153,10 @@ Resources:
           - Sid: SnsPublishAndRead
             Effect: Allow
             Action:
-              - sns:Publish
-              - sns:Get*
-              - sns:List*
-              - sns:ConfirmSubscription
+              - sns:Publish               ## publish a message to a topic
+              - sns:Get*                  ## read topic/subscription attributes/policies
+              - sns:List*                 ## list topics/subscriptions
+              - sns:ConfirmSubscription   ## confirm a pending subscription
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -165,11 +165,11 @@ Resources:
           - Sid: SnsOpsMinimalWrites
             Effect: Allow
             Action:
-              - sns:Subscribe
-              - sns:Unsubscribe
+              - sns:Subscribe     ## create a subscription to an allowed topic
+              - sns:Unsubscribe   ## remove a subscription from an allowed topic
             Resource:
-              - arn:aws:sns:*:*:network-*
-              - arn:aws:sns:*:*:network-*:*
+              - arn:aws:sns:*:*:network-*     ## only topics with name prefix network-*
+              - arn:aws:sns:*:*:network-*:*   ## and their subscriptions/endpoints
 
           ## -------------------------------------------------------------------
           ## Messaging — SQS consume/read
@@ -177,11 +177,11 @@ Resources:
           - Sid: SqsConsumeAndRead
             Effect: Allow
             Action:
-              - sqs:ReceiveMessage
-              - sqs:SendMessage
-              - sqs:GetQueueAttributes
-              - sqs:GetQueueUrl
-              - sqs:ListQueues
+              - sqs:ReceiveMessage        ## receive/consume messages
+              - sqs:SendMessage           ## send/test messages into a queue
+              - sqs:GetQueueAttributes    ## read queue attributes (e.g., DLQ, visibility)
+              - sqs:GetQueueUrl           ## resolve queue URL by name
+              - sqs:ListQueues            ## list queues in the account/region
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -190,10 +190,10 @@ Resources:
           - Sid: SqsOpsMinimalWrites
             Effect: Allow
             Action:
-              - sqs:DeleteMessage
-              - sqs:ChangeMessageVisibility
+              - sqs:DeleteMessage             ## delete (ack) a received message
+              - sqs:ChangeMessageVisibility   ## extend/shorten visibility timeout in-flight
             Resource:
-              - arn:aws:sqs:*:*:network-*
+              - arn:aws:sqs:*:*:network-*     ## only queues with name prefix network-*
 
 ## -------------------------------------------------------------------------- ##
 

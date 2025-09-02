@@ -38,11 +38,11 @@ Resources:
           - Sid: CodeBuildOperations
             Effect: Allow
             Action:
-              - codebuild:BatchGet*
-              - codebuild:List*
-              - codebuild:StartBuild
-              - codebuild:StopBuild
-              - codebuild:RetryBuild
+              - codebuild:BatchGet*   ## read build/project details and logs (batch APIs)
+              - codebuild:List*       ## enumerate projects/builds/IDs/history
+              - codebuild:StartBuild  ## kick off a build
+              - codebuild:StopBuild   ## stop a running build
+              - codebuild:RetryBuild  ## retry a failed/canceled build
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -51,10 +51,10 @@ Resources:
           - Sid: CodeDeployOperations
             Effect: Allow
             Action:
-              - codedeploy:Get*
-              - codedeploy:List*
-              - codedeploy:CreateDeployment
-              - codedeploy:StopDeployment
+              - codedeploy:Get*              ## read apps/deployment groups/deployments/status
+              - codedeploy:List*             ## enumerate apps/deployment groups/deployments
+              - codedeploy:CreateDeployment  ## trigger a deployment
+              - codedeploy:StopDeployment    ## stop/rollback an in-flight deployment
             Resource: "*"
 
 ## -------------------------------------------------------------------------- ##

@@ -97,9 +97,9 @@ Resources:
           - Sid: AccessAnalyzerReadOnlyAndValidation
             Effect: Allow
             Action:
-              - access-analyzer:Get*
-              - access-analyzer:List*
-              - access-analyzer:ValidatePolicy
+              - access-analyzer:Get*            ## read analyzers, findings, and generated policies
+              - access-analyzer:List*           ## list analyzers/findings/policy generations
+              - access-analyzer:ValidatePolicy  ## validate IAM/STS/resource policies for issues
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -108,13 +108,13 @@ Resources:
           - Sid: SecurityServicesReadOnly
             Effect: Allow
             Action:
-              - guardduty:Get*
-              - guardduty:List*
-              - inspector2:Get*
-              - inspector2:List*
-              - securityhub:Describe*
-              - securityhub:Get*
-              - securityhub:List*
+              - guardduty:Get*         ## read GuardDuty detectors/findings/config
+              - guardduty:List*        ## list detectors/IPSets/ThreatIntelSets/findings
+              - inspector2:Get*        ## read Inspector v2 findings/coverage
+              - inspector2:List*       ## list scans/findings/coverage resources
+              - securityhub:Describe*  ## describe products/members/insights/settings
+              - securityhub:Get*       ## get findings/insights/standards/control states
+              - securityhub:List*      ## list products/standards/controls/members
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -123,9 +123,9 @@ Resources:
           - Sid: MacieReadOnly
             Effect: Allow
             Action:
-              - macie2:Describe*
-              - macie2:Get*
-              - macie2:List*
+              - macie2:Describe*  ## describe Macie configuration/classification jobs
+              - macie2:Get*       ## get findings/results/sample data
+              - macie2:List*      ## list jobs/findings/classification resources
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -134,8 +134,8 @@ Resources:
           - Sid: FirewallManagerReadOnly
             Effect: Allow
             Action:
-              - fms:Get*
-              - fms:List*
+              - fms:Get*   ## read FMS policies/violations
+              - fms:List*  ## list policies/member accounts/resources
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -144,8 +144,8 @@ Resources:
           - Sid: SecurityLakeReadOnly
             Effect: Allow
             Action:
-              - securitylake:Get*
-              - securitylake:List*
+              - securitylake:Get*   ## read lake configuration/subscriptions
+              - securitylake:List*  ## list sources/subscribers/lakes
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -154,9 +154,9 @@ Resources:
           - Sid: DetectiveReadOnly
             Effect: Allow
             Action:
-              - detective:Get*
-              - detective:List*
-              - detective:Describe*
+              - detective:Get*       ## get graph/relationships/investigation data
+              - detective:List*      ## list graphs/members/invitations
+              - detective:Describe*  ## describe graphs/resources/organization settings
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -165,9 +165,9 @@ Resources:
           - Sid: AuditManagerReadOnly
             Effect: Allow
             Action:
-              - auditmanager:Get*
-              - auditmanager:List*
-              - auditmanager:Describe*
+              - auditmanager:Get*       ## get assessments/evidence/control sets
+              - auditmanager:List*      ## list assessments/evidence/control sets
+              - auditmanager:Describe*  ## describe frameworks/settings/metadata
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -176,12 +176,12 @@ Resources:
           - Sid: EventsAndSchedulerReadOnly
             Effect: Allow
             Action:
-              - events:Describe*
-              - events:Get*
-              - events:List*
-              - scheduler:Describe*
-              - scheduler:Get*
-              - scheduler:List*
+              - events:Describe*    ## describe rules/targets/buses/pipes links
+              - events:Get*         ## get rule/event bus/connection/policy details
+              - events:List*        ## list rules/targets/buses/archives/replays
+              - scheduler:Describe* ## describe schedules/schedule groups
+              - scheduler:Get*      ## get schedule definitions and policies
+              - scheduler:List*     ## list schedules and groups
             Resource: "*"
 
           ## -------------------------------------------------------------------
@@ -190,9 +190,9 @@ Resources:
           - Sid: EventBridgePipesReadOnly
             Effect: Allow
             Action:
-              - pipes:DescribePipe
-              - pipes:ListPipes
-              - pipes:ListTagsForResource
+              - pipes:DescribePipe         ## read pipe definition/configuration
+              - pipes:ListPipes            ## enumerate pipes in the account/region
+              - pipes:ListTagsForResource  ## read tags on a pipe resource
             Resource: "*"
 
 ## -------------------------------------------------------------------------- ##
