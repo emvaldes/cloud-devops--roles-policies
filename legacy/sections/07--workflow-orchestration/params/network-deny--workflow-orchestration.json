@@ -1,4 +1,0 @@
-[
-  { "ParameterKey": "ManagedPolicyName", "ParameterValue": "network-deny--workflow-orchestration" },
-  { "ParameterKey": "CustomPolicyPath",  "ParameterValue": "/managed/network/" }
-]

@@ -1,4 +1,0 @@
-[
-  { "ParameterKey": "ManagedPolicyName", "ParameterValue": "network-allow--infrastructure" },
-  { "ParameterKey": "CustomPolicyPath",  "ParameterValue": "/managed/network/" }
-]

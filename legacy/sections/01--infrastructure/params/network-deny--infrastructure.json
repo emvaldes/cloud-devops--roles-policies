@@ -1,5 +1,0 @@
-[
-  { "ParameterKey": "ManagedPolicyName", "ParameterValue": "network-deny--infrastructure" },
-  { "ParameterKey": "CustomPolicyPath",  "ParameterValue": "/managed/network/" },
-  { "ParameterKey": "DnssecKmsKeyArns",  "ParameterValue": "" }
-]
