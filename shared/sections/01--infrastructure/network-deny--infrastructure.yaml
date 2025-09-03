@@ -75,32 +75,6 @@ Resources:
                 aws:MultiFactorAuthAge: 3600  ## max 3600s (1h) since last MFA verification
 
           ## -------------------------------------------------------------------
-          ## PassRole only when CFN is the target service
-          ## -------------------------------------------------------------------
-          - Sid: DenyPassRoleUnlessCfnService
-            Effect: Deny
-            Action: iam:PassRole
-            Resource: "*"
-            Condition:
-              StringNotEquals:
-                iam:PassedToService: cloudformation.amazonaws.com  ## Force CFN-only PassRole
-
-          ## -------------------------------------------------------------------
-          ## Even for CFN, restrict the *role being passed* to CFN exec-role naming
-          ## -------------------------------------------------------------------
-          - Sid: DenyPassRoleOutsideCfnExecRoles
-            Effect: Deny
-            Action: iam:PassRole
-            NotResource:
-              - arn:aws:iam::*:role/cfn-*                          ## Allowed CFN exec roles
-              - arn:aws:iam::*:role/cloudformation-*               ## Allowed CFN exec roles
-              - arn:aws:iam::*:role/service-role/cfn-*             ## Allowed CFN exec roles
-              - arn:aws:iam::*:role/service-role/cloudformation-*  ## Allowed CFN exec roles
-            Condition:
-              StringEquals:
-                iam:PassedToService: cloudformation.amazonaws.com
-
-          ## -------------------------------------------------------------------
           ## IAM admin blocked; exception = discovery + SLR
           ## -------------------------------------------------------------------
           - Sid: DenyIamAllExceptIdentityDiscoveryAndSLR
@@ -223,18 +197,6 @@ Resources:
             Action:
               - acm:ExportCertificate        ## prevent private key exfiltration
               - acm:PutAccountConfiguration  ## prevent account-wide ACM setting changes
-            Resource: "*"
-
-          ## -------------------------------------------------------------------
-          ## CFN safety rails: no stack set deletes, no stack policy fiddling, no disabling termination protection
-          ## -------------------------------------------------------------------
-          - Sid: DenyCloudFormationPolicyAndDeletes
-            Effect: Deny
-            Action:
-              - cloudformation:DeleteStackInstances         ## prevent destructive StackSet instance removals
-              - cloudformation:DeleteStackSet               ## prevent deletion of entire StackSets
-              - cloudformation:SetStackPolicy               ## disallow changing stack protection policies
-              - cloudformation:UpdateTerminationProtection  ## prevent toggling termination protection
             Resource: "*"
 
 ## -------------------------------------------------------------------------- ##

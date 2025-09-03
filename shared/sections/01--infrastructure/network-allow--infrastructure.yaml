@@ -33,21 +33,6 @@ Resources:
 ## 1 - Infrastructure
 
           ## -------------------------------------------------------------------
-          ## IAM: permit CFN to assume only CFN exec roles (boundary enforces CFN-only)
-          ## -------------------------------------------------------------------
-          - Sid: PassRoleForCloudFormationExecRoles
-            Effect: Allow
-            Action: iam:PassRole  ## allow passing exec roles to CFN
-            Resource:
-              - arn:aws:iam::*:role/cfn-*                          ## customer-created CFN execution roles (any path except service-role/)
-              - arn:aws:iam::*:role/cloudformation-*               ## alt customer naming for CFN exec roles
-              - arn:aws:iam::*:role/service-role/cfn-*             ## CFN exec roles under 'service-role/' path
-              - arn:aws:iam::*:role/service-role/cloudformation-*  ## alt naming under 'service-role/' path
-            Condition:
-              StringEquals:
-                iam:PassedToService: cloudformation.amazonaws.com  ## CFN target only
-
-          ## -------------------------------------------------------------------
           ## IAM: discovery + service-linked role creation (writes limited)
           ## -------------------------------------------------------------------
           - Sid: IdentityDiscoveryAndSLR
@@ -67,19 +52,6 @@ Resources:
               - iam:SimulateCustomPolicy     ## run simulator against an inline/JSON policy document
               - iam:SimulatePrincipalPolicy  ## run simulator against a principal’s effective policy set
             Resource: "*"                    ## simulator needs wildcard; results are read-only
-
-          ## -------------------------------------------------------------------
-          ## IAM Access Analyzer: policy validation + CloudTrail-based generation
-          ## -------------------------------------------------------------------
-          - Sid: AccessAnalyzerPolicyGeneration
-            Effect: Allow
-            Action:
-              - access-analyzer:ValidatePolicy          ## static analysis of IAM/STS/resource policies
-              - access-analyzer:StartPolicyGeneration   ## kick off policy generation from CloudTrail activity
-              - access-analyzer:GetGeneratedPolicy      ## retrieve the generated least-privilege policy JSON
-              - access-analyzer:CancelPolicyGeneration  ## stop an in-flight generation job (cleanup)
-              - access-analyzer:ListPolicyGenerations   ## list previous generation jobs/status
-            Resource: "*"                               ## AA is account-scoped; actions are control-plane
 
           ## -------------------------------------------------------------------
           ## KMS: read + cryptographic use (Encrypt/Decrypt/DataKey); boundary enforces ViaService constraints
@@ -127,22 +99,6 @@ Resources:
               - s3:ListBucketVersions          ## list object versions
             Resource:
               - arn:aws:s3:::network-*
-
-          ## -------------------------------------------------------------------
-          ## S3: only CFN may set/delete bucket policies (change control)
-          ## -------------------------------------------------------------------
-          - Sid: S3BucketPolicyViaCloudFormationOnly
-            Effect: Allow
-            Action:
-              - s3:GetBucketPolicy        ## read current bucket policy
-              - s3:GetBucketPolicyStatus  ## read public access status
-              - s3:PutBucketPolicy        ## set/replace bucket policy
-              - s3:DeleteBucketPolicy     ## remove bucket policy
-            Resource:
-              - arn:aws:s3:::network-*
-            Condition:
-              ForAnyValue:StringEquals:
-                aws:CalledVia: cloudformation.amazonaws.com  ## only when invoked by CFN
 
           ## -------------------------------------------------------------------
           ## S3: object CRUD in network-* (SSE required; multipart supported)

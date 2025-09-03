@@ -33,6 +33,37 @@ Resources:
 ## 7 - Development — Source & Orchestration
 
           ## -------------------------------------------------------------------
+          ## IAM: permit CFN to assume only CFN exec roles (boundary enforces CFN-only)
+          ## -------------------------------------------------------------------
+          - Sid: PassRoleForCloudFormationExecRoles
+            Effect: Allow
+            Action: iam:PassRole  ## allow passing exec roles to CFN
+            Resource:
+              - arn:aws:iam::*:role/cfn-*                          ## customer-created CFN execution roles (any path except service-role/)
+              - arn:aws:iam::*:role/cloudformation-*               ## alt customer naming for CFN exec roles
+              - arn:aws:iam::*:role/service-role/cfn-*             ## CFN exec roles under 'service-role/' path
+              - arn:aws:iam::*:role/service-role/cloudformation-*  ## alt naming under 'service-role/' path
+            Condition:
+              StringEquals:
+                iam:PassedToService: cloudformation.amazonaws.com  ## CFN target only
+
+          ## -------------------------------------------------------------------
+          ## S3: only CFN may set/delete bucket policies (change control)
+          ## -------------------------------------------------------------------
+          - Sid: S3BucketPolicyViaCloudFormationOnly
+            Effect: Allow
+            Action:
+              - s3:GetBucketPolicy        ## read current bucket policy
+              - s3:GetBucketPolicyStatus  ## read public access status
+              - s3:PutBucketPolicy        ## set/replace bucket policy
+              - s3:DeleteBucketPolicy     ## remove bucket policy
+            Resource:
+              - arn:aws:s3:::network-*
+            Condition:
+              ForAnyValue:StringEquals:
+                aws:CalledVia: cloudformation.amazonaws.com  ## only when invoked by CFN
+
+          ## -------------------------------------------------------------------
           ## IaC: deploy with CloudFormation (create/update stacks & change sets)
           ## -------------------------------------------------------------------
           - Sid: CloudFormationDeploy
@@ -94,7 +125,7 @@ Resources:
               - sns:Get*                  ## read topic/subscription attributes/policies
               - sns:List*                 ## list topics/subscriptions
               - sns:ConfirmSubscription   ## confirm a pending subscription
-            Resource: "*"
+            Resource: "arn:aws:sns:*:*:network-*"
 
           ## -------------------------------------------------------------------
           ## Messaging — SNS minimal writes (scoped to network-*)
@@ -119,7 +150,7 @@ Resources:
               - sqs:GetQueueAttributes    ## read queue attributes (e.g., DLQ, visibility)
               - sqs:GetQueueUrl           ## resolve queue URL by name
               - sqs:ListQueues            ## list queues in the account/region
-            Resource: "*"
+            Resource: "arn:aws:sns:*:*:network-*"
 
           ## -------------------------------------------------------------------
           ## Messaging — SQS minimal writes (scoped to network-*)
