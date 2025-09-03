@@ -5,7 +5,7 @@ Parameters:
 
   ManagedPolicyName:
     Type: String
-    Default: network-administrator-policy
+    Default: network--administrator--policy
     Description: "AWS IAM managed policy (role naming conventions live on the role)"
 
   CustomPolicyPath:
@@ -48,54 +48,49 @@ Resources:
             Resource: "*"
 
           ## -------------------------------------------------------------------
-          ## CodeArtifact: read-only (no publish/admin)
-          ## Purpose: allow consumption of artifacts/packages from approved repos.
-          ## No domain/repo admin, no publishing, no upstream/format changes.
+          ## CodeArtifact — read-only
           ## -------------------------------------------------------------------
           - Sid: CodeArtifactReadOnly
             Effect: Allow
             Action:
-              - codeartifact:Get*            ## read package/version/asset metadata
-              - codeartifact:List*           ## enumerate domains/repos/packages
-              - codeartifact:ReadFromRepository  ## download package assets
-            Resource: "*"                    ## wide by default; can be narrowed to repos
+              - codeartifact:Get*                   ## read package/version/asset metadata
+              - codeartifact:List*                  ## enumerate domains/repos/packages
+              - codeartifact:ReadFromRepository     ## download package assets
+              - codeartifact:GetAuthorizationToken  ## needed for 'aws codeartifact login' / npm/pip
+            Resource: "*"
 
           ## -------------------------------------------------------------------
-          ## ECR: read-only/pull (no push/admin)
-          ## Purpose: enable docker login and image pulls for CI/diagnostics.
-          ## No PutImage, no repo policy/admin, no deletes.
+          ## ECR — read-only/pull
           ## -------------------------------------------------------------------
           - Sid: EcrReadOnlyPull
             Effect: Allow
             Action:
-              - ecr:BatchGetImage           ## retrieve image manifests/layers
-              - ecr:Describe*               ## describe repos/images/lifecycle policies
-              - ecr:GetAuthorizationToken   ## token for 'docker login' (account-scoped)
-              - ecr:List*                   ## list repositories/images
-            Resource: "*"                   ## GetAuthorizationToken requires "*"
+              - ecr:BatchGetImage                ## retrieve image manifests
+              - ecr:BatchCheckLayerAvailability  ## check layer presence
+              - ecr:GetDownloadUrlForLayer       ## download image layers
+              - ecr:Describe*                    ## describe repos/images/lifecycle policies
+              - ecr:GetAuthorizationToken        ## token for 'docker login'
+              - ecr:List*                        ## list repositories/images
+            Resource: "*"
 
           ## -------------------------------------------------------------------
-          ## ECS: read-only (no service/cluster lifecycle)
-          ## Purpose: visibility for clusters/services/tasks/events without mutation.
-          ## No Create*/Update*/Delete*, no RunTask/Start/Stop.
+          ## ECS — read-only
           ## -------------------------------------------------------------------
           - Sid: EcsReadOnly
             Effect: Allow
             Action:
-              - ecs:Describe*               ## describe clusters/services/tasks/container-instances
-              - ecs:List*                   ## list clusters/services/tasks/task-definitions
+              - ecs:Describe*  ## describe clusters/services/tasks/container-instances
+              - ecs:List*      ## list clusters/services/tasks/task-definitions
             Resource: "*"
 
           ## -------------------------------------------------------------------
-          ## EKS: read-only (no cluster/nodegroup lifecycle)
-          ## Purpose: read cluster/nodegroup/addon state and configs for auditing.
-          ## No Create*/Update*/Delete*. Note: does NOT grant Kubernetes RBAC inside clusters.
+          ## EKS — read-only
           ## -------------------------------------------------------------------
           - Sid: EksReadOnly
             Effect: Allow
             Action:
-              - eks:Describe*               ## describe clusters/nodegroups/fargate-profiles/addons
-              - eks:List*                   ## list clusters/nodegroups/addons
+              - eks:Describe*  ## describe clusters/nodegroups/fargate-profiles/addons
+              - eks:List*      ## list clusters/nodegroups/addons
             Resource: "*"
 
           ## -------------------------------------------------------------------

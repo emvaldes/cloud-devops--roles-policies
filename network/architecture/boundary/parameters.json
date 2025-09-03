@@ -1,7 +1,7 @@
 [
     {
         "ParameterKey": "PermissionsBoundaryName",
-        "ParameterValue": "network-architecture-permissions-boundary"
+        "ParameterValue": "network--architecture--boundary"
     },
     {
         "ParameterKey": "CustomPolicyPath",

@@ -1,0 +1,170 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "cloudshell:GetFileDownloadUrls",
+                "cloudshell:GetFileUploadUrls",
+                "cloudshell:PutCredentials"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCloudShellFileXferAndCredInject"
+        },
+        {
+            "Action": [
+                "q:Associate*",
+                "q:Create*",
+                "q:Delete*",
+                "q:Disassociate*",
+                "q:Put*",
+                "q:TagResource",
+                "q:UntagResource",
+                "q:Update*",
+                "qbusiness:Associate*",
+                "qbusiness:Create*",
+                "qbusiness:Delete*",
+                "qbusiness:Disassociate*",
+                "qbusiness:Put*",
+                "qbusiness:TagResource",
+                "qbusiness:UntagResource",
+                "qbusiness:Update*"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyAmazonQAdministration"
+        },
+        {
+            "Action": [
+                "ram:DisableSharingWithAwsOrganization",
+                "ram:EnableSharingWithAwsOrganization"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyOrgWideRAMSharing"
+        },
+        {
+            "Action": [
+                "resource-explorer-2:AssociateDefaultView",
+                "resource-explorer-2:Create*",
+                "resource-explorer-2:Delete*",
+                "resource-explorer-2:DisassociateDefaultView",
+                "resource-explorer-2:TagResource",
+                "resource-explorer-2:UntagResource",
+                "resource-explorer-2:Update*",
+                "resource-groups:Create*",
+                "resource-groups:Delete*",
+                "resource-groups:Tag*",
+                "resource-groups:Untag*",
+                "resource-groups:Update*",
+                "tag:TagResources",
+                "tag:UntagResources"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyResourceExplorerAndTaggingAdministration"
+        },
+        {
+            "Action": [
+                "iam:SimulateCustomPolicy",
+                "iam:SimulatePrincipalPolicy"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "IamPolicySimulation"
+        },
+        {
+            "Action": [
+                "cloudshell:*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "CloudShellFull"
+        },
+        {
+            "Action": [
+                "q:GenerateCodeFromCommands",
+                "q:GetConversation",
+                "q:ListConversations",
+                "q:SendMessage",
+                "q:StartConversation"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "AmazonQUseInConsole"
+        },
+        {
+            "Action": [
+                "qbusiness:Chat",
+                "qbusiness:ChatSync"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "QBusinessChatUseOnly"
+        },
+        {
+            "Action": [
+                "ram:CreateResourceShare",
+                "ram:UpdateResourceShare",
+                "ram:DeleteResourceShare",
+                "ram:AssociateResourceShare",
+                "ram:DisassociateResourceShare",
+                "ram:AssociateResourceSharePermission",
+                "ram:DisassociateResourceSharePermission",
+                "ram:AcceptResourceShareInvitation",
+                "ram:RejectResourceShareInvitation",
+                "ram:Get*",
+                "ram:List*",
+                "ram:TagResource",
+                "ram:UntagResource"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "RamNetworkSharesAdmin"
+        },
+        {
+            "Action": [
+                "ram:CreatePermission",
+                "ram:CreatePermissionVersion",
+                "ram:SetDefaultPermissionVersion",
+                "ram:UpdatePermission",
+                "ram:DeletePermission",
+                "ram:DeletePermissionVersion",
+                "ram:ReplacePermissionAssociations",
+                "ram:ListPermissionAssociations",
+                "ram:PromotePermissionCreatedFromPolicy",
+                "ram:PromoteResourceShareCreatedFromPolicy",
+                "ram:Get*",
+                "ram:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "RamPermissionAuthoring"
+        },
+        {
+            "Action": [
+                "resource-explorer-2:Search",
+                "resource-explorer-2:Get*",
+                "resource-explorer-2:List*",
+                "resource-groups:Get*",
+                "resource-groups:List*",
+                "tag:GetResources",
+                "tag:GetTagValues",
+                "tag:GetTagKeys",
+                "account:ListRegions",
+                "organizations:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "DiscoveryAndTagReadOnly"
+        },
+        {
+            "Action": [
+                "support:*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "SupportFull"
+        }
+    ]
+}

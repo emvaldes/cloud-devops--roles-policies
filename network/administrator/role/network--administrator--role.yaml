@@ -92,30 +92,29 @@ Resources:
         Version: "2012-10-17"
         Statement:
 
-          ## Federated SAML principal in this account only.
+          # SAML federation (AWS sign-in audience only)
           - Effect: Allow
+
             Principal:
               Federated: !Sub "arn:aws:iam::${AccountNumber}:saml-provider/${SamlProviderName}"
+
             Action: "sts:AssumeRoleWithSAML"
-
-            ## Audience restriction prevents misuse with non-AWS SAML audiences.
             Condition:
-
               StringEquals:
                 SAML:aud: "https://signin.aws.amazon.com/saml"
-                aws:RequestTag/mfa: "true"
 
-              ForAllValues:StringEquals:
-                aws:TagKeys: [ mfa ]
-
-          ## Allow the IdP to pass the required session tag `mfa=true`.
+          # Require session tag mfa=true (via TagSession)
           - Effect: Allow
+
             Principal:
               Federated: !Sub "arn:aws:iam::${AccountNumber}:saml-provider/${SamlProviderName}"
+
             Action: "sts:TagSession"
             Condition:
+
               StringEquals:
                 aws:RequestTag/mfa: "true"
+
               ForAllValues:StringEquals:
                 aws:TagKeys: [ mfa ]
 

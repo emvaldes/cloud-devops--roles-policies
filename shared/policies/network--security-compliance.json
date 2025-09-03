@@ -1,0 +1,165 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "access-analyzer:ApplyArchiveRule",
+                "access-analyzer:Create*",
+                "access-analyzer:CreateArchiveRule",
+                "access-analyzer:Delete*",
+                "access-analyzer:DeleteArchiveRule",
+                "access-analyzer:StartResourceScan",
+                "access-analyzer:TagResource",
+                "access-analyzer:UntagResource",
+                "access-analyzer:Update*"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyAccessAnalyzerAdministration"
+        },
+        {
+            "Action": [
+                "guardduty:DeleteDetector",
+                "guardduty:DisableOrganizationAdminAccount",
+                "guardduty:UpdateDetector"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyGuardDutyDisable"
+        },
+        {
+            "Action": [
+                "inspector2:Disable",
+                "inspector2:DisableDelegatedAdminAccount"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyInspectorDisable"
+        },
+        {
+            "Action": [
+                "securityhub:DisableOrganizationAdminAccount",
+                "securityhub:DisableSecurityHub"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenySecurityHubDisable"
+        },
+        {
+            "Action": [
+                "macie2:DisableMacie",
+                "macie2:DisableOrganizationAdminAccount"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyMacieDisableAndOrgAdmin"
+        },
+        {
+            "Action": [
+                "access-analyzer:Get*",
+                "access-analyzer:List*",
+                "access-analyzer:ValidatePolicy"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "AccessAnalyzerReadOnlyAndValidation"
+        },
+        {
+            "Action": [
+                "access-analyzer:ValidatePolicy",
+                "access-analyzer:StartPolicyGeneration",
+                "access-analyzer:GetGeneratedPolicy",
+                "access-analyzer:CancelPolicyGeneration",
+                "access-analyzer:ListPolicyGenerations"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "AccessAnalyzerPolicyGeneration"
+        },
+        {
+            "Action": [
+                "guardduty:Get*",
+                "guardduty:List*",
+                "inspector2:Get*",
+                "inspector2:List*",
+                "securityhub:Describe*",
+                "securityhub:Get*",
+                "securityhub:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "SecurityServicesReadOnly"
+        },
+        {
+            "Action": [
+                "macie2:Describe*",
+                "macie2:Get*",
+                "macie2:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "MacieReadOnly"
+        },
+        {
+            "Action": [
+                "fms:Get*",
+                "fms:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "FirewallManagerReadOnly"
+        },
+        {
+            "Action": [
+                "securitylake:Get*",
+                "securitylake:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "SecurityLakeReadOnly"
+        },
+        {
+            "Action": [
+                "detective:Get*",
+                "detective:List*",
+                "detective:Describe*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "DetectiveReadOnly"
+        },
+        {
+            "Action": [
+                "auditmanager:Get*",
+                "auditmanager:List*",
+                "auditmanager:Describe*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "AuditManagerReadOnly"
+        },
+        {
+            "Action": [
+                "events:Describe*",
+                "events:Get*",
+                "events:List*",
+                "scheduler:Describe*",
+                "scheduler:Get*",
+                "scheduler:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "EventsAndSchedulerReadOnly"
+        },
+        {
+            "Action": [
+                "pipes:DescribePipe",
+                "pipes:ListPipes",
+                "pipes:ListTagsForResource"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "EventBridgePipesReadOnly"
+        }
+    ]
+}

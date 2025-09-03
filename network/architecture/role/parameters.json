@@ -21,15 +21,15 @@
     },
     {
         "ParameterKey": "CustomRoleName",
-        "ParameterValue": "network-architecture"
+        "ParameterValue": "network--architecture"
     },
     {
         "ParameterKey": "ManagedPolicyName",
-        "ParameterValue": "network-architecture-policy"
+        "ParameterValue": "network--architecture--policy"
     },
     {
         "ParameterKey": "PermissionsBoundaryPolicyName",
-        "ParameterValue": "network-architecture-permissions-boundary"
+        "ParameterValue": "network--architecture--boundary"
     },
     {
         "ParameterKey": "CustomRolePath",

@@ -1,0 +1,188 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "ssm:DeleteComplianceItems",
+                "ssm:DeleteInventory",
+                "ssm:PutInventory",
+                "ssm:UpdateInstanceInformation",
+                "ssm:UpdateServiceSetting"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenySsmHighRiskAdminOnly"
+        },
+        {
+            "Action": [
+                "ssm:CreateActivation",
+                "ssm:RegisterManagedInstance",
+                "ssm:DeregisterManagedInstance",
+                "ssm:CreateResourceDataSync",
+                "ssm:UpdateResourceDataSync",
+                "ssm:DeleteResourceDataSync",
+                "ssm:PutComplianceItems"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenySsmHighRiskExtrasTight"
+        },
+        {
+            "Condition": {
+                "Null": {
+                    "ssm:resourceTag/NetworkManaged": "true"
+                }
+            },
+            "Action": [
+                "ssm:StartSession",
+                "ssm:SendCommand"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenySsmRunWhenTagMissing"
+        },
+        {
+            "Condition": {
+                "StringNotEquals": {
+                    "ssm:resourceTag/NetworkManaged": "true"
+                }
+            },
+            "Action": [
+                "ssm:StartSession",
+                "ssm:SendCommand"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenySsmRunWhenTagNotTrue"
+        },
+        {
+            "Condition": {
+                "Null": {
+                    "ssm:AutomationAssumeRole": "true"
+                }
+            },
+            "Action": [
+                "ssm:StartAutomationExecution"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenySsmAutomationWithoutAssumeRole"
+        },
+        {
+            "Condition": {
+                "Null": {
+                    "ec2:InstanceProfile": "true"
+                }
+            },
+            "Action": "ec2:RunInstances",
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyRunInstancesWithoutInstanceProfile"
+        },
+        {
+            "Condition": {
+                "StringEquals": {
+                    "ssm:resourceTag/NetworkManaged": "true"
+                },
+                "StringLikeIfExists": {
+                    "ssm:DocumentName": [
+                        "AWS-RunShellScript",
+                        "AWS-RunPowerShellScript",
+                        "network-*"
+                    ]
+                }
+            },
+            "Action": [
+                "ssm:Describe*",
+                "ssm:List*",
+                "ssm:Get*",
+                "ssm:StartSession",
+                "ssm:ResumeSession",
+                "ssm:TerminateSession",
+                "ssm:SendCommand",
+                "ssm:CancelCommand",
+                "ssm:GetCommandInvocation"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "SsmCoreOps"
+        },
+        {
+            "Action": [
+                "ssm:*Association",
+                "ssm:*MaintenanceWindow*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "SsmAssocAndMW"
+        },
+        {
+            "Action": [
+                "ssm:*Parameter*"
+            ],
+            "Resource": "arn:aws:ssm:*:*:parameter/network/*",
+            "Effect": "Allow",
+            "Sid": "SsmParametersNetworkPath"
+        },
+        {
+            "Action": [
+                "ssm:*Document*"
+            ],
+            "Resource": "arn:aws:ssm:*:*:document/network-*",
+            "Effect": "Allow",
+            "Sid": "SsmDocsNetwork"
+        },
+        {
+            "Action": [
+                "ssm:GetDocument",
+                "ssm:DescribeDocument",
+                "ssm:ListDocuments",
+                "ssm:ListDocumentVersions"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "SsmDocsRead"
+        },
+        {
+            "Condition": {
+                "StringEquals": {
+                    "iam:PassedToService": "ssm.amazonaws.com"
+                }
+            },
+            "Action": "iam:PassRole",
+            "Resource": [
+                "arn:aws:iam::*:role/network-automation-ssm-*"
+            ],
+            "Effect": "Allow",
+            "Sid": "AllowPassRoleForSsmAutomation"
+        },
+        {
+            "Condition": {
+                "StringLike": {
+                    "ssm:AutomationAssumeRole": [
+                        "arn:aws:iam::*:role/network-automation-ssm-*"
+                    ]
+                }
+            },
+            "Action": [
+                "ssm:StartAutomationExecution"
+            ],
+            "Resource": [
+                "arn:aws:ssm:*:*:document/network-*"
+            ],
+            "Effect": "Allow",
+            "Sid": "SsmAutomationStartWithApprovedRole"
+        },
+        {
+            "Action": [
+                "ssm:GetAutomationExecution",
+                "ssm:DescribeAutomationExecutions",
+                "ssm:DescribeAutomationStepExecutions",
+                "ssm:ListAutomationExecutions"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "SsmAutomationReadResults"
+        }
+    ]
+}

@@ -5,7 +5,7 @@ Parameters:
 
   ManagedPolicyName:
     Type: String
-    Default: network-architecture-policy
+    Default: network--architecture--policy
     Description: "AWS IAM managed policy (role naming conventions live on the role)"
 
   CustomPolicyPath:

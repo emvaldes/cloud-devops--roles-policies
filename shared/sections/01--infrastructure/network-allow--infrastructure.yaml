@@ -32,16 +32,16 @@ Resources:
 ## -------------------------------------------------------------------------- ##
 ## 1 - Infrastructure
 
-          ## -------------------------------------------------------------------
-          ## IAM: discovery + service-linked role creation (writes limited)
-          ## -------------------------------------------------------------------
-          - Sid: IdentityDiscoveryAndSLR
-            Effect: Allow
-            Action:
-              - iam:CreateServiceLinkedRole  ## create SLRs when needed
-              - iam:Get*                     ## read IAM entities/policies
-              - iam:List*                    ## list IAM entities
-            Resource: "*"
+          # ## -------------------------------------------------------------------
+          # ## IAM: discovery + service-linked role creation (writes limited)
+          # ## -------------------------------------------------------------------
+          # - Sid: IdentityDiscoveryAndSLR
+          #   Effect: Allow
+          #   Action:
+          #     - iam:CreateServiceLinkedRole  ## create SLRs when needed
+          #     - iam:Get*                     ## read IAM entities/policies
+          #     - iam:List*                    ## list IAM entities
+          #   Resource: "*"
 
           ## -------------------------------------------------------------------
           ## IAM: policy simulation (Policy Simulator / CLI)

@@ -86,17 +86,29 @@ Resources:
               StringNotEquals:
                 ssm:resourceTag/NetworkManaged: "true"  ## present but not "true" -> deny
 
+          # ## -------------------------------------------------------------------
+          # ## Disallow Automation when an assume role is supplied
+          # ## -------------------------------------------------------------------
+          # - Sid: DenySsmAutomationWithAssumeRole
+          #   Effect: Deny
+          #   Action:
+          #     - ssm:StartAutomationExecution       ## block automation docs from assuming roles
+          #   Resource: "*"
+          #   Condition:
+          #     "Null":
+          #       ssm:AutomationAssumeRole: "false"  ## if field present (role supplied) -> deny
+
           ## -------------------------------------------------------------------
-          ## Disallow Automation when an assume role is supplied
+          ## SSM — Automation: require explicit exec role (deny if missing)
           ## -------------------------------------------------------------------
-          - Sid: DenySsmAutomationWithAssumeRole
+          - Sid: DenySsmAutomationWithoutAssumeRole
             Effect: Deny
             Action:
-              - ssm:StartAutomationExecution       ## block automation docs from assuming roles
+              - ssm:StartAutomationExecution
             Resource: "*"
             Condition:
-              "Null":
-                ssm:AutomationAssumeRole: "false"  ## if field present (role supplied) -> deny
+              Null:
+                ssm:AutomationAssumeRole: "true"   # deny when no role is supplied
 
           ## -------------------------------------------------------------------
           ## Require an instance profile on every EC2 launch

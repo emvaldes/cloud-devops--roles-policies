@@ -139,18 +139,38 @@ Resources:
               - arn:aws:sns:*:*:network-*     ## only topics with name prefix network-*
               - arn:aws:sns:*:*:network-*:*   ## and their subscriptions/endpoints
 
+          # ## -------------------------------------------------------------------
+          # ## Messaging — SQS consume/read
+          # ## -------------------------------------------------------------------
+          # - Sid: SqsConsumeAndRead
+          #   Effect: Allow
+          #   Action:
+          #     - sqs:ReceiveMessage        ## receive/consume messages
+          #     - sqs:SendMessage           ## send/test messages into a queue
+          #     - sqs:GetQueueAttributes    ## read queue attributes (e.g., DLQ, visibility)
+          #     - sqs:GetQueueUrl           ## resolve queue URL by name
+          #     - sqs:ListQueues            ## list queues in the account/region
+          #   Resource: "arn:aws:sns:*:*:network-*"
+
           ## -------------------------------------------------------------------
-          ## Messaging — SQS consume/read
+          ## Messaging — SQS consume/read (queue-scoped; network-* only)
           ## -------------------------------------------------------------------
           - Sid: SqsConsumeAndRead
             Effect: Allow
             Action:
-              - sqs:ReceiveMessage        ## receive/consume messages
-              - sqs:SendMessage           ## send/test messages into a queue
-              - sqs:GetQueueAttributes    ## read queue attributes (e.g., DLQ, visibility)
+              - sqs:ReceiveMessage        ## consume messages
+              - sqs:SendMessage           ## send/test messages
+              - sqs:GetQueueAttributes    ## read attributes/ARN/DLQ/visibility
               - sqs:GetQueueUrl           ## resolve queue URL by name
-              - sqs:ListQueues            ## list queues in the account/region
-            Resource: "arn:aws:sns:*:*:network-*"
+            Resource: "arn:aws:sqs:*:*:network-*"  ## correct SQS ARN pattern
+
+          ## -------------------------------------------------------------------
+          ## Messaging — SQS list (account-wide; requires Resource "*")
+          ## -------------------------------------------------------------------
+          - Sid: SqsListQueues
+            Effect: Allow
+            Action: sqs:ListQueues        ## enumerate queues in account/region
+            Resource: "*"                 ## ListQueues does not support resource-level ARNs
 
           ## -------------------------------------------------------------------
           ## Messaging — SQS minimal writes (scoped to network-*)

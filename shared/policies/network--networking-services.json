@@ -1,0 +1,185 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Condition": {
+                "StringEquals": {
+                    "servicequotas:service": "directconnect"
+                }
+            },
+            "Action": [
+                "servicequotas:RequestServiceQuotaIncrease"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyServiceQuotasDirectConnectIncrease"
+        },
+        {
+            "Action": [
+                "directconnect:Accept*",
+                "directconnect:Allocate*",
+                "directconnect:Associate*",
+                "directconnect:Attach*",
+                "directconnect:Confirm*",
+                "directconnect:Create*",
+                "directconnect:Delete*",
+                "directconnect:Detach*",
+                "directconnect:Disassociate*",
+                "directconnect:Update*",
+                "directconnect:TagResource",
+                "directconnect:UntagResource"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyDirectConnectAdministration"
+        },
+        {
+            "Action": [
+                "route53domains:AssociateDelegationSignerToDomain",
+                "route53domains:DeleteDomain",
+                "route53domains:DisableDomainAutoRenew",
+                "route53domains:DisassociateDelegationSignerFromDomain",
+                "route53domains:EnableDomainAutoRenew",
+                "route53domains:RegisterDomain",
+                "route53domains:TransferDomain",
+                "route53domains:TransferDomainToAnotherAwsAccount",
+                "route53domains:UpdateDomainContact",
+                "route53domains:UpdateDomainContactPrivacy",
+                "route53domains:UpdateDomainNameservers",
+                "route53domains:UpdateTagsForDomain"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyRoute53DomainsRegistrarAdministration"
+        },
+        {
+            "Action": [
+                "secretsmanager:GetSecretValue",
+                "secretsmanager:DescribeSecret",
+                "secretsmanager:ListSecrets"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "SecretsManagerRead"
+        },
+        {
+            "Action": [
+                "directconnect:Describe*",
+                "directconnect:List*",
+                "directconnect:ViewConnections"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "DirectConnectReadOnly"
+        },
+        {
+            "Action": [
+                "servicequotas:Get*",
+                "servicequotas:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "ServiceQuotasRead"
+        },
+        {
+            "Condition": {
+                "StringEquals": {
+                    "servicequotas:service": [
+                        "ec2",
+                        "vpc",
+                        "elasticloadbalancing",
+                        "route53",
+                        "route53resolver",
+                        "directconnect",
+                        "globalaccelerator",
+                        "network-firewall",
+                        "vpc-lattice",
+                        "networkmanager",
+                        "ram"
+                    ]
+                }
+            },
+            "Action": [
+                "servicequotas:RequestServiceQuotaIncrease",
+                "servicequotas:PutServiceQuotaIncreaseRequestIntoTemplate",
+                "servicequotas:DeleteServiceQuotaIncreaseRequestFromTemplate",
+                "servicequotas:TagResource",
+                "servicequotas:UntagResource"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "ServiceQuotasNetworkRequestsFull"
+        },
+        {
+            "Action": [
+                "servicequotas:AssociateServiceQuotaTemplate",
+                "servicequotas:DisassociateServiceQuotaTemplate"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "ServiceQuotasTemplateToggle"
+        },
+        {
+            "Action": [
+                "ec2:*",
+                "elasticloadbalancing:*",
+                "globalaccelerator:*",
+                "network-firewall:*",
+                "networkmanager:*",
+                "route53resolver:*",
+                "vpc-lattice:*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "NetworkingAdmin"
+        },
+        {
+            "Action": [
+                "route53:*",
+                "route53profiles:*",
+                "route53-recovery-control-config:*",
+                "route53-recovery-readiness:*",
+                "route53-recovery-cluster:*",
+                "arc-zonal-shift:*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "Route53AndARCAdmin"
+        },
+        {
+            "Action": [
+                "route53domains:ListDomains",
+                "route53domains:GetDomainDetail",
+                "route53domains:ListOperations",
+                "route53domains:GetOperationDetail",
+                "route53domains:ListTagsForDomain",
+                "route53domains:ListPrices",
+                "route53domains:CheckDomainAvailability",
+                "route53domains:GetDomainSuggestions"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "Route53DomainsReadOnly"
+        },
+        {
+            "Action": [
+                "wafv2:Get*",
+                "wafv2:List*",
+                "shield:Describe*",
+                "shield:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "EdgeProtectionReadOnly"
+        },
+        {
+            "Action": [
+                "internetmonitor:*",
+                "networkmonitor:*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "InternetAndNetworkMonitorAdmin"
+        }
+    ]
+}

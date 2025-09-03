@@ -1,0 +1,179 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "config:Delete*",
+                "config:DeleteConfigRule",
+                "config:DeleteRemediationConfigurations",
+                "config:PutConfigRule",
+                "config:PutConfigurationRecorder",
+                "config:PutDeliveryChannel",
+                "config:PutRemediationConfigurations",
+                "config:StopConfigurationRecorder"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyConfigTamper"
+        },
+        {
+            "Action": [
+                "cloudtrail:DeleteTrail",
+                "cloudtrail:PutEventSelectors",
+                "cloudtrail:StopLogging",
+                "cloudtrail:UpdateTrail"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCloudTrailTamper"
+        },
+        {
+            "Action": [
+                "cloudtrail:PutInsightSelectors"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCloudTrailInsightsToggle"
+        },
+        {
+            "Action": [
+                "logs:AssociateKmsKey",
+                "logs:Delete*",
+                "logs:DisassociateKmsKey",
+                "logs:PutResourcePolicy",
+                "logs:PutRetentionPolicy",
+                "logs:PutSubscriptionFilter"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyLogsTamper"
+        },
+        {
+            "Action": [
+                "cloudwatch:DeleteAlarms",
+                "cloudwatch:DisableAlarmActions",
+                "cloudwatch:SetAlarmState"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCloudWatchAlarmTamper"
+        },
+        {
+            "Action": [
+                "xray:Delete*"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyXRayTamper"
+        },
+        {
+            "Action": [
+                "s3:DeleteAccountPublicAccessBlock"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyS3AccountPublicAccessBlockDelete"
+        },
+        {
+            "Action": [
+                "oam:CreateSink",
+                "oam:DeleteSink",
+                "oam:PutSinkPolicy",
+                "oam:TagResource",
+                "oam:UntagResource"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyOamSinkAdministration"
+        },
+        {
+            "Action": [
+                "config:BatchGet*",
+                "config:Deliver*",
+                "config:Describe*",
+                "config:Get*",
+                "config:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "ConfigReadOnly"
+        },
+        {
+            "Action": [
+                "cloudtrail:DescribeTrails",
+                "cloudtrail:GetEventSelectors",
+                "cloudtrail:GetInsightSelectors",
+                "cloudtrail:GetTrailStatus",
+                "cloudtrail:List*",
+                "cloudtrail:LookupEvents",
+                "cloudtrail:StartQuery",
+                "cloudtrail:GetQueryResults"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "CloudTrailReadOnly"
+        },
+        {
+            "Action": [
+                "logs:Describe*",
+                "logs:Get*",
+                "logs:FilterLogEvents",
+                "logs:StartQuery",
+                "logs:GetQueryResults",
+                "logs:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "LogsReadAndQuery"
+        },
+        {
+            "Action": [
+                "cloudwatch:Describe*",
+                "cloudwatch:Get*",
+                "cloudwatch:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "CloudWatchReadOnly"
+        },
+        {
+            "Action": [
+                "xray:Get*",
+                "xray:BatchGet*",
+                "xray:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "XRayReadOnly"
+        },
+        {
+            "Action": [
+                "health:Describe*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "HealthReadOnly"
+        },
+        {
+            "Action": [
+                "trustedadvisor:Describe*",
+                "trustedadvisor:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "TrustedAdvisorReadOnly"
+        },
+        {
+            "Action": [
+                "oam:CreateLink",
+                "oam:DeleteLink",
+                "oam:Get*",
+                "oam:List*",
+                "oam:UpdateLink"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "ObservabilityAccessManagerLinking"
+        }
+    ]
+}

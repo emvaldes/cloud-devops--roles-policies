@@ -21,15 +21,15 @@
     },
     {
         "ParameterKey": "CustomRoleName",
-        "ParameterValue": "network-administrator"
+        "ParameterValue": "network--administrator"
     },
     {
         "ParameterKey": "ManagedPolicyName",
-        "ParameterValue": "network-administrator-policy"
+        "ParameterValue": "network--administrator--policy"
     },
     {
         "ParameterKey": "PermissionsBoundaryPolicyName",
-        "ParameterValue": "network-administrator-permissions-boundary"
+        "ParameterValue": "network--administrator--boundary"
     },
     {
         "ParameterKey": "CustomRolePath",

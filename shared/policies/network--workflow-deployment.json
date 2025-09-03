@@ -1,0 +1,136 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "codebuild:CreateProject",
+                "codebuild:UpdateProject",
+                "codebuild:DeleteProject"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCodeBuildProjectLifecycleAdmin"
+        },
+        {
+            "Action": [
+                "codebuild:CreateWebhook",
+                "codebuild:DeleteWebhook"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCodeBuildWebhookAdmin"
+        },
+        {
+            "Action": [
+                "codebuild:ImportSourceCredentials",
+                "codebuild:DeleteSourceCredentials",
+                "codebuild:PersistOAuthToken"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCodeBuildSourceCredentialAdmin"
+        },
+        {
+            "Action": [
+                "codebuild:PutResourcePolicy",
+                "codebuild:DeleteResourcePolicy"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCodeBuildResourcePolicyAdmin"
+        },
+        {
+            "Action": [
+                "codebuild:UpdateProjectVisibility"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCodeBuildPublicProjectVisibility"
+        },
+        {
+            "Action": [
+                "codebuild:CreateFleet",
+                "codebuild:UpdateFleet",
+                "codebuild:DeleteFleet"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCodeBuildFleetAdmin"
+        },
+        {
+            "Action": [
+                "codebuild:StartBuildBatch",
+                "codebuild:RetryBuildBatch",
+                "codebuild:StopBuildBatch"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCodeBuildBatchBuilds"
+        },
+        {
+            "Action": [
+                "codebuild:BatchDeleteBuilds"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCodeBuildDeleteBuilds"
+        },
+        {
+            "Action": [
+                "codedeploy:CreateApplication",
+                "codedeploy:UpdateApplication",
+                "codedeploy:DeleteApplication",
+                "codedeploy:CreateDeploymentGroup",
+                "codedeploy:UpdateDeploymentGroup",
+                "codedeploy:DeleteDeploymentGroup",
+                "codedeploy:CreateDeploymentConfig",
+                "codedeploy:DeleteDeploymentConfig"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCodeDeployAppGroupConfigAdmin"
+        },
+        {
+            "Action": [
+                "codedeploy:RegisterGitHubAccountToken",
+                "codedeploy:DeleteGitHubAccountToken"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCodeDeployGitHubTokenAdmin"
+        },
+        {
+            "Action": [
+                "codedeploy:RegisterOnPremisesInstance",
+                "codedeploy:DeregisterOnPremisesInstance"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCodeDeployOnPremAdmin"
+        },
+        {
+            "Action": [
+                "codebuild:BatchGet*",
+                "codebuild:List*",
+                "codebuild:StartBuild",
+                "codebuild:StopBuild",
+                "codebuild:RetryBuild"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "CodeBuildOperations"
+        },
+        {
+            "Action": [
+                "codedeploy:Get*",
+                "codedeploy:List*",
+                "codedeploy:RegisterApplicationRevision",
+                "codedeploy:CreateDeployment",
+                "codedeploy:StopDeployment"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "CodeDeployOperations"
+        }
+    ]
+}

@@ -98,17 +98,43 @@ Resources:
             Resource: "*"
 
           ## -------------------------------------------------------------------
-          ## SSM — Automation: start executions only for your runbooks; caller creds only
+          ## IAM — PassRole: only approved SSM exec roles (service-scoped)
           ## -------------------------------------------------------------------
-          - Sid: SsmAutomationStartNetworkDocsOnly
+          - Sid: AllowPassRoleForSsmAutomation
+            Effect: Allow
+            Action: iam:PassRole
+            Resource:
+              - arn:aws:iam::*:role/network-automation-ssm-*
+            Condition:
+              StringEquals:
+                iam:PassedToService: ssm.amazonaws.com
+
+          # ## -------------------------------------------------------------------
+          # ## SSM — Automation: start executions only for your runbooks; caller creds only
+          # ## -------------------------------------------------------------------
+          # - Sid: SsmAutomationStartNetworkDocsOnly
+          #   Effect: Allow
+          #   Action:
+          #     - ssm:StartAutomationExecution        ## kick off Automation execution for allowed docs
+          #   Resource:
+          #     - arn:aws:ssm:*:*:document/network-*  ## only your network-* runbooks
+          #   Condition:
+          #     "Null":
+          #       ssm:AutomationAssumeRole: "true"    ## require NO AutomationAssumeRole (runs with caller context)
+
+          ## -------------------------------------------------------------------
+          ## SSM — Automation: allow only approved exec roles on network-* docs
+          ## -------------------------------------------------------------------
+          - Sid: SsmAutomationStartWithApprovedRole
             Effect: Allow
             Action:
-              - ssm:StartAutomationExecution        ## kick off Automation execution for allowed docs
+              - ssm:StartAutomationExecution
             Resource:
-              - arn:aws:ssm:*:*:document/network-*  ## only your network-* runbooks
+              - arn:aws:ssm:*:*:document/network-*   # only your runbooks
             Condition:
-              "Null":
-                ssm:AutomationAssumeRole: "true"    ## require NO AutomationAssumeRole (runs with caller context)
+              StringLike:
+                ssm:AutomationAssumeRole:
+                  - arn:aws:iam::*:role/network-automation-ssm-*  # approved exec roles
 
           ## -------------------------------------------------------------------
           ## SSM — Automation results: read back executions/steps

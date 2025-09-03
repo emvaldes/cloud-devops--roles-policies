@@ -1,7 +1,7 @@
 [
     {
         "ParameterKey": "ManagedPolicyName",
-        "ParameterValue": "network-administrator-policy"
+        "ParameterValue": "network--administrator--policy"
     },
     {
         "ParameterKey": "CustomPolicyPath",

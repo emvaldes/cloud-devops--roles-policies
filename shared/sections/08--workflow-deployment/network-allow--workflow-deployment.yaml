@@ -51,10 +51,11 @@ Resources:
           - Sid: CodeDeployOperations
             Effect: Allow
             Action:
-              - codedeploy:Get*              ## read apps/deployment groups/deployments/status
-              - codedeploy:List*             ## enumerate apps/deployment groups/deployments
-              - codedeploy:CreateDeployment  ## trigger a deployment
-              - codedeploy:StopDeployment    ## stop/rollback an in-flight deployment
+              - codedeploy:Get*                     ## read apps, deployment groups, deployments, statuses
+              - codedeploy:List*                    ## list apps/deployment groups/deployments/revisions
+              - codedeploy:RegisterApplicationRevision ## register S3/GitHub revision for an application
+              - codedeploy:CreateDeployment         ## start a deployment using a registered revision
+              - codedeploy:StopDeployment           ## stop/rollback an in-flight deployment
             Resource: "*"
 
 ## -------------------------------------------------------------------------- ##

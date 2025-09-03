@@ -5,7 +5,7 @@ Parameters:
 
   PermissionsBoundaryName:
     Type: String
-    Default: network-administrator-permissions-boundary
+    Default: network--administrator--boundary
     Description: "AWS IAM permissions boundary managed policy"
 
   CustomPolicyPath:

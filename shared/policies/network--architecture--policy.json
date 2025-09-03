@@ -1,0 +1,72 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "acm:RequestCertificate",
+                "acm:ImportCertificate",
+                "acm:DeleteCertificate",
+                "acm:UpdateCertificateOptions",
+                "acm:DescribeCertificate",
+                "acm:GetCertificate",
+                "acm:ListCertificates",
+                "acm:ListTagsForCertificate",
+                "acm:AddTagsToCertificate",
+                "acm:RemoveTagsFromCertificate",
+                "acm:RenewCertificate",
+                "acm:ResendValidationEmail"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "CertificateManagerPrototyping"
+        },
+        {
+            "Action": [
+                "codeartifact:*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "CodeArtifactAdmin"
+        },
+        {
+            "Action": [
+                "ecr:*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "EcrAdmin"
+        },
+        {
+            "Action": [
+                "ecs:*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "EcsAdmin"
+        },
+        {
+            "Action": [
+                "eks:*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "EksAdmin"
+        },
+        {
+            "Action": [
+                "servicecatalog:Describe*",
+                "servicecatalog:Get*",
+                "servicecatalog:List*",
+                "servicecatalog:SearchProducts*",
+                "servicediscovery:Get*",
+                "servicediscovery:List*",
+                "servicecatalog:ProvisionProduct",
+                "servicecatalog:TerminateProvisionedProduct",
+                "servicecatalog:UpdateProvisionedProduct"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "ServiceDiscoveryReadOnlyAndCatalogProvisioning"
+        }
+    ]
+}

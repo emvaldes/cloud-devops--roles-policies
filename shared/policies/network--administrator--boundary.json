@@ -1,0 +1,202 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": "*",
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "GuardrailAllowAll"
+        },
+        {
+            "Action": [
+                "acm:DeleteCertificate",
+                "acm:UpdateCertificateOptions"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyAcmTamper"
+        },
+        {
+            "Action": [
+                "acm-pca:CreateCertificateAuthority",
+                "acm-pca:DeleteCertificateAuthority",
+                "acm-pca:UpdateCertificateAuthority",
+                "acm-pca:RestoreCertificateAuthority",
+                "acm-pca:PutPolicy",
+                "acm-pca:TagCertificateAuthority",
+                "acm-pca:UntagCertificateAuthority",
+                "acm-pca:CreatePermission",
+                "acm-pca:DeletePermission",
+                "acm-pca:ImportCertificateAuthorityCertificate"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyAcmPcaAdministration"
+        },
+        {
+            "Action": [
+                "sns:AddPermission",
+                "sns:DeleteTopic",
+                "sns:RemovePermission",
+                "sns:SetTopicAttributes"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenySnsDestructiveAndPolicyAdmin"
+        },
+        {
+            "Action": [
+                "sqs:AddPermission",
+                "sqs:DeleteQueue",
+                "sqs:RemovePermission",
+                "sqs:SetQueueAttributes"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenySqsDeleteAndPolicyAdmin"
+        },
+        {
+            "Action": [
+                "events:CreateEventBus",
+                "events:DeleteEventBus",
+                "events:DeleteRule",
+                "events:PutPermission",
+                "events:PutRule",
+                "events:PutTargets",
+                "events:RemovePermission",
+                "events:RemoveTargets",
+                "events:TagResource",
+                "events:UntagResource",
+                "scheduler:Create*",
+                "scheduler:Delete*",
+                "scheduler:TagResource",
+                "scheduler:UntagResource",
+                "scheduler:Update*"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyEventsAndSchedulerAdministration"
+        },
+        {
+            "Condition": {
+                "StringNotLike": {
+                    "ec2:InstanceProfile": [
+                        "arn:aws:iam::*:instance-profile/network-ec2-ssm-*",
+                        "arn:aws:iam::*:instance-profile/network-eks-ssm-*",
+                        "arn:aws:iam::*:instance-profile/network-batch-ssm-*"
+                    ]
+                }
+            },
+            "Action": [
+                "ec2:AssociateIamInstanceProfile",
+                "ec2:ReplaceIamInstanceProfileAssociation"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyAssociateOrReplaceUnapprovedInstanceProfile"
+        },
+        {
+            "Action": "ec2:DisassociateIamInstanceProfile",
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyDisassociateInstanceProfile"
+        },
+        {
+            "Action": [
+                "ec2:CreateVpcPeeringConnection",
+                "ec2:AcceptVpcPeeringConnection",
+                "ec2:RejectVpcPeeringConnection",
+                "ec2:DeleteVpcPeeringConnection",
+                "ec2:ModifyVpcPeeringConnectionOptions"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyVpcPeeringAll"
+        },
+        {
+            "Action": [
+                "detective:Create*",
+                "detective:Delete*",
+                "detective:DisableOrganizationAdminAccount",
+                "detective:EnableOrganizationAdminAccount",
+                "detective:Start*",
+                "detective:TagResource",
+                "detective:UntagResource",
+                "detective:Update*"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyDetectiveAdministration"
+        },
+        {
+            "Action": [
+                "securitylake:Create*",
+                "securitylake:Delete*",
+                "securitylake:Put*",
+                "securitylake:TagResource",
+                "securitylake:UntagResource",
+                "securitylake:Update*"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenySecurityLakeAdministration"
+        },
+        {
+            "Action": [
+                "auditmanager:Create*",
+                "auditmanager:Delete*",
+                "auditmanager:Put*",
+                "auditmanager:TagResource",
+                "auditmanager:UntagResource",
+                "auditmanager:Update*"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyAuditManagerAdministration"
+        },
+        {
+            "Action": [
+                "ecs:CreateCluster",
+                "ecs:CreateService",
+                "ecs:DeleteCluster",
+                "ecs:DeleteService",
+                "ecs:DeregisterTaskDefinition",
+                "ecs:RegisterTaskDefinition",
+                "ecs:RunTask",
+                "ecs:StartTask",
+                "ecs:StopTask",
+                "ecs:UpdateService"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyEcsClusterServiceTaskLifecycle"
+        },
+        {
+            "Action": [
+                "eks:Delete*",
+                "eks:UpdateClusterConfig",
+                "eks:UpdateClusterVersion",
+                "eks:UpdateNodegroupConfig",
+                "eks:UpdateNodegroupVersion"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyEksDestructiveOps"
+        },
+        {
+            "Action": [
+                "ecr:BatchDeleteImage",
+                "ecr:CompleteLayerUpload",
+                "ecr:DeleteRepository",
+                "ecr:DeleteRepositoryPolicy",
+                "ecr:InitiateLayerUpload",
+                "ecr:PutImage",
+                "ecr:SetRepositoryPolicy",
+                "ecr:UploadLayerPart"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyEcrPushDeleteAndPolicyAdmin"
+        }
+    ]
+}

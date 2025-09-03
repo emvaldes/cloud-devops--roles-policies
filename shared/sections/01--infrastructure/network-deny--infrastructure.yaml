@@ -74,25 +74,35 @@ Resources:
               NumericGreaterThanIfExists:
                 aws:MultiFactorAuthAge: 3600  ## max 3600s (1h) since last MFA verification
 
-          ## -------------------------------------------------------------------
-          ## IAM admin blocked; exception = discovery + SLR
-          ## -------------------------------------------------------------------
-          - Sid: DenyIamAllExceptIdentityDiscoveryAndSLR
-            Effect: Deny
-            NotAction:
-              - iam:CreateServiceLinkedRole  ## allow SLR creation; further limited to network services by next guard
-              - iam:Get*                     ## read-only inspection of identities, policies, and metadata
-              - iam:List*                    ## list-only enumeration for discovery/audits
-            Resource: "*"
+          # ## -------------------------------------------------------------------
+          # ## IAM admin blocked; exception = discovery + SLR
+          # ## -------------------------------------------------------------------
+          # - Sid: DenyIamAllExceptIdentityDiscoveryAndSLR
+          #   Effect: Deny
+          #   NotAction:
+          #     - iam:CreateServiceLinkedRole  ## allow SLR creation; further limited to network services by next guard
+          #     - iam:Get*                     ## read-only inspection of identities, policies, and metadata
+          #     - iam:List*                    ## list-only enumeration for discovery/audits
+          #   Resource: "*"
+          #
+          # ## -------------------------------------------------------------------
+          # ## IAM admin blocked; exception = policy simulation
+          # ## -------------------------------------------------------------------
+          # - Sid: DenyIamAllExceptPolicySimulation
+          #   Effect: Deny
+          #   NotAction:
+          #     - iam:SimulateCustomPolicy     ## run IAM policy simulator on custom policy documents
+          #     - iam:SimulatePrincipalPolicy  ## simulate effective permissions for a given principal
+          #   Resource: "*"
 
-          ## -------------------------------------------------------------------
-          ## IAM admin blocked; exception = policy simulation
-          ## -------------------------------------------------------------------
-          - Sid: DenyIamAllExceptPolicySimulation
+          - Sid: DenyIamAllExceptReadSimulateAndSLR
             Effect: Deny
             NotAction:
-              - iam:SimulateCustomPolicy     ## run IAM policy simulator on custom policy documents
-              - iam:SimulatePrincipalPolicy  ## simulate effective permissions for a given principal
+              - iam:Get*                   # read-only inspection
+              - iam:List*                  # list-only enumeration
+              - iam:SimulateCustomPolicy   # simulate custom policy
+              - iam:SimulatePrincipalPolicy # simulate principal policy
+              - iam:CreateServiceLinkedRole # create SLR (restricted by condition block below)
             Resource: "*"
 
           ## -------------------------------------------------------------------

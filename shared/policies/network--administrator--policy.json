@@ -1,0 +1,75 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Action": [
+                "acm:RequestCertificate",
+                "acm:DescribeCertificate",
+                "acm:GetCertificate",
+                "acm:ListCertificates",
+                "acm:ListTagsForCertificate",
+                "acm:AddTagsToCertificate",
+                "acm:RemoveTagsFromCertificate",
+                "acm:RenewCertificate"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "CertificateManagerOpsSafe"
+        },
+        {
+            "Action": [
+                "codeartifact:Get*",
+                "codeartifact:List*",
+                "codeartifact:ReadFromRepository",
+                "codeartifact:GetAuthorizationToken"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "CodeArtifactReadOnly"
+        },
+        {
+            "Action": [
+                "ecr:BatchGetImage",
+                "ecr:BatchCheckLayerAvailability",
+                "ecr:GetDownloadUrlForLayer",
+                "ecr:Describe*",
+                "ecr:GetAuthorizationToken",
+                "ecr:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "EcrReadOnlyPull"
+        },
+        {
+            "Action": [
+                "ecs:Describe*",
+                "ecs:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "EcsReadOnly"
+        },
+        {
+            "Action": [
+                "eks:Describe*",
+                "eks:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "EksReadOnly"
+        },
+        {
+            "Action": [
+                "servicecatalog:Describe*",
+                "servicecatalog:Get*",
+                "servicecatalog:List*",
+                "servicecatalog:SearchProducts*",
+                "servicediscovery:Get*",
+                "servicediscovery:List*"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "ServiceDiscoveryReadOnlyAndCatalogProvisioning"
+        }
+    ]
+}

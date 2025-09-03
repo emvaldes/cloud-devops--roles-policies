@@ -1,0 +1,236 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Condition": {
+                "StringNotEquals": {
+                    "iam:PassedToService": "cloudformation.amazonaws.com"
+                }
+            },
+            "Action": "iam:PassRole",
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyPassRoleUnlessCfnService"
+        },
+        {
+            "Condition": {
+                "StringEquals": {
+                    "iam:PassedToService": "cloudformation.amazonaws.com"
+                }
+            },
+            "Action": "iam:PassRole",
+            "Effect": "Deny",
+            "Sid": "DenyPassRoleOutsideCfnExecRoles",
+            "NotResource": [
+                "arn:aws:iam::*:role/cfn-*",
+                "arn:aws:iam::*:role/cloudformation-*",
+                "arn:aws:iam::*:role/service-role/cfn-*",
+                "arn:aws:iam::*:role/service-role/cloudformation-*"
+            ]
+        },
+        {
+            "Action": [
+                "cloudformation:DeleteStackInstances",
+                "cloudformation:DeleteStackSet",
+                "cloudformation:SetStackPolicy",
+                "cloudformation:UpdateTerminationProtection"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCloudFormationPolicyAndDeletes"
+        },
+        {
+            "Action": [
+                "codecommit:CreateRepository",
+                "codecommit:DeleteRepository",
+                "codecommit:UpdateRepositoryName",
+                "codecommit:UpdateRepositoryDescription",
+                "codecommit:PutRepositoryTriggers"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCodeCommitRepoLifecycleAdmin"
+        },
+        {
+            "Action": [
+                "codepipeline:CreatePipeline",
+                "codepipeline:UpdatePipeline",
+                "codepipeline:DeletePipeline"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCodePipelineLifecycleAdmin"
+        },
+        {
+            "Action": [
+                "codepipeline:DisableStageTransition",
+                "codepipeline:EnableStageTransition"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCodePipelineStageTransitionToggle"
+        },
+        {
+            "Action": [
+                "codepipeline:PutWebhook",
+                "codepipeline:DeleteWebhook",
+                "codepipeline:RegisterWebhookWithThirdParty",
+                "codepipeline:DeregisterWebhookWithThirdParty"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCodePipelineWebhookAdmin"
+        },
+        {
+            "Action": [
+                "codepipeline:CreateCustomActionType",
+                "codepipeline:DeleteCustomActionType",
+                "codepipeline:PollForJobs",
+                "codepipeline:AcknowledgeJob",
+                "codepipeline:PutJobSuccessResult",
+                "codepipeline:PutJobFailureResult",
+                "codepipeline:AcknowledgeThirdPartyJob",
+                "codepipeline:GetThirdPartyJobDetails",
+                "codepipeline:PutThirdPartyJobSuccessResult",
+                "codepipeline:PutThirdPartyJobFailureResult"
+            ],
+            "Resource": "*",
+            "Effect": "Deny",
+            "Sid": "DenyCodePipelineCustomActionJobs"
+        },
+        {
+            "Condition": {
+                "StringEquals": {
+                    "iam:PassedToService": "cloudformation.amazonaws.com"
+                }
+            },
+            "Action": "iam:PassRole",
+            "Resource": [
+                "arn:aws:iam::*:role/cfn-*",
+                "arn:aws:iam::*:role/cloudformation-*",
+                "arn:aws:iam::*:role/service-role/cfn-*",
+                "arn:aws:iam::*:role/service-role/cloudformation-*"
+            ],
+            "Effect": "Allow",
+            "Sid": "PassRoleForCloudFormationExecRoles"
+        },
+        {
+            "Condition": {
+                "ForAnyValue:StringEquals": {
+                    "aws:CalledVia": "cloudformation.amazonaws.com"
+                }
+            },
+            "Action": [
+                "s3:GetBucketPolicy",
+                "s3:GetBucketPolicyStatus",
+                "s3:PutBucketPolicy",
+                "s3:DeleteBucketPolicy"
+            ],
+            "Resource": [
+                "arn:aws:s3:::network-*"
+            ],
+            "Effect": "Allow",
+            "Sid": "S3BucketPolicyViaCloudFormationOnly"
+        },
+        {
+            "Action": [
+                "cloudformation:CreateStack",
+                "cloudformation:UpdateStack",
+                "cloudformation:CreateChangeSet",
+                "cloudformation:ExecuteChangeSet",
+                "cloudformation:DeleteChangeSet",
+                "cloudformation:Describe*",
+                "cloudformation:Get*",
+                "cloudformation:List*",
+                "cloudformation:ValidateTemplate",
+                "cloudformation:DetectStackDrift",
+                "cloudformation:DetectStackResourceDrift",
+                "cloudformation:CancelUpdateStack",
+                "cloudformation:ContinueUpdateRollback"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "CloudFormationDeploy"
+        },
+        {
+            "Action": [
+                "codecommit:Get*",
+                "codecommit:List*",
+                "codecommit:GitPull",
+                "codecommit:GitPush",
+                "codecommit:CreatePullRequest",
+                "codecommit:UpdatePullRequest*",
+                "codecommit:MergePullRequestByFastForward",
+                "codecommit:MergePullRequestBySquash",
+                "codecommit:MergePullRequestByThreeWay"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "CodeCommitReadWrite"
+        },
+        {
+            "Action": [
+                "codepipeline:Get*",
+                "codepipeline:List*",
+                "codepipeline:StartPipelineExecution",
+                "codepipeline:StopPipelineExecution",
+                "codepipeline:RetryStageExecution",
+                "codepipeline:PutApprovalResult"
+            ],
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "CodePipelineOperations"
+        },
+        {
+            "Action": [
+                "sns:Publish",
+                "sns:Get*",
+                "sns:List*",
+                "sns:ConfirmSubscription"
+            ],
+            "Resource": "arn:aws:sns:*:*:network-*",
+            "Effect": "Allow",
+            "Sid": "SnsPublishAndRead"
+        },
+        {
+            "Action": [
+                "sns:Subscribe",
+                "sns:Unsubscribe"
+            ],
+            "Resource": [
+                "arn:aws:sns:*:*:network-*",
+                "arn:aws:sns:*:*:network-*:*"
+            ],
+            "Effect": "Allow",
+            "Sid": "SnsOpsMinimalWrites"
+        },
+        {
+            "Action": [
+                "sqs:ReceiveMessage",
+                "sqs:SendMessage",
+                "sqs:GetQueueAttributes",
+                "sqs:GetQueueUrl"
+            ],
+            "Resource": "arn:aws:sqs:*:*:network-*",
+            "Effect": "Allow",
+            "Sid": "SqsConsumeAndRead"
+        },
+        {
+            "Action": "sqs:ListQueues",
+            "Resource": "*",
+            "Effect": "Allow",
+            "Sid": "SqsListQueues"
+        },
+        {
+            "Action": [
+                "sqs:DeleteMessage",
+                "sqs:ChangeMessageVisibility"
+            ],
+            "Resource": [
+                "arn:aws:sqs:*:*:network-*"
+            ],
+            "Effect": "Allow",
+            "Sid": "SqsOpsMinimalWrites"
+        }
+    ]
+}
