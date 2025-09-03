@@ -101,6 +101,16 @@ Resources:
 ## 2 - Allow: Utilities & Support
 
           ## -------------------------------------------------------------------
+          ## IAM: policy simulation (Policy Simulator / CLI)
+          ## -------------------------------------------------------------------
+          - Sid: IamPolicySimulation
+            Effect: Allow
+            Action:
+              - iam:SimulateCustomPolicy     ## run simulator against an inline/JSON policy document
+              - iam:SimulatePrincipalPolicy  ## run simulator against a principal’s effective policy set
+            Resource: "*"                    ## simulator needs wildcard; results are read-only
+
+          ## -------------------------------------------------------------------
           ## CloudShell: full access (deny policy blocks exfil/infil/cred inject)
           ## -------------------------------------------------------------------
           - Sid: CloudShellFull

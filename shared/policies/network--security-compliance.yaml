@@ -103,6 +103,19 @@ Resources:
             Resource: "*"
 
           ## -------------------------------------------------------------------
+          ## IAM Access Analyzer: policy validation + CloudTrail-based generation
+          ## -------------------------------------------------------------------
+          - Sid: AccessAnalyzerPolicyGeneration
+            Effect: Allow
+            Action:
+              - access-analyzer:ValidatePolicy          ## static analysis of IAM/STS/resource policies
+              - access-analyzer:StartPolicyGeneration   ## kick off policy generation from CloudTrail activity
+              - access-analyzer:GetGeneratedPolicy      ## retrieve the generated least-privilege policy JSON
+              - access-analyzer:CancelPolicyGeneration  ## stop an in-flight generation job (cleanup)
+              - access-analyzer:ListPolicyGenerations   ## list previous generation jobs/status
+            Resource: "*"                               ## AA is account-scoped; actions are control-plane
+
+          ## -------------------------------------------------------------------
           ## Security services: read-only (Hub/GuardDuty/Inspector)
           ## -------------------------------------------------------------------
           - Sid: SecurityServicesReadOnly
